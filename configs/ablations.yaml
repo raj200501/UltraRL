@@ -1,0 +1,21 @@
+train_variants:
+  - name: rl_monitorability_no_budget_penalty
+    display_name: Monitorability RL w/o Budget Penalty
+    env_overrides:
+      reward_scheme: monitorability_aware
+      budget_penalty: false
+  - name: rl_monitorability_no_verify
+    display_name: Monitorability RL w/o VERIFY
+    env_overrides:
+      reward_scheme: monitorability_aware
+      allow_verify: false
+  - name: rl_monitorability_no_revise
+    display_name: Monitorability RL w/o REVISE
+    env_overrides:
+      reward_scheme: monitorability_aware
+      allow_revise: false
+  - name: rl_monitorability_no_monitor_term
+    display_name: Monitorability RL w/o Monitorability Term
+    env_overrides:
+      reward_scheme: monitorability_aware
+      ma_opaque_penalty: 0.0
