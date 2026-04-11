@@ -29,7 +29,16 @@ def build_method_specs(default_cfg: dict[str, Any], ablations_cfg: dict[str, Any
 
 
 def setting_to_overrides(setting: dict[str, Any]) -> dict[str, Any]:
-    keys = ["p_fault", "verify_cost", "budget_extra", "allow_verify", "allow_revise", "budget_penalty"]
+    keys = [
+        "p_fault",
+        "verify_cost",
+        "budget_extra",
+        "allow_verify",
+        "allow_revise",
+        "budget_penalty",
+        "hint_reliability",
+        "hint_false_positive",
+    ]
     return {key: setting[key] for key in keys if key in setting}
 
 

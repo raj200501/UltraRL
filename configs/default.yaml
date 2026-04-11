@@ -90,3 +90,11 @@ evaluation:
     - name: budget_extra_8
       depth_range: [7, 9]
       budget_extra: 8
+    - name: cue_clean
+      depth_range: [7, 9]
+      hint_reliability: 0.95
+      hint_false_positive: 0.05
+    - name: cue_noisy
+      depth_range: [7, 9]
+      hint_reliability: 0.60
+      hint_false_positive: 0.35

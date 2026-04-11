@@ -14,7 +14,7 @@
 \usepackage{xcolor}
 \usepackage{graphicx}
 
-\title{Monitorability-Aware Budgeted Process RL with Local Ambiguity Cues: A Tiny Symbolic Study}
+\title{When Does Monitorability-Aware Process RL Help? A Tiny Symbolic Study of Budgeted Verification}
 
 \author{Anonymous Authors}
 
@@ -23,17 +23,19 @@
 \maketitle
 
 \begin{abstract}
-We study a tiny symbolic proxy for budgeted reasoning RL in which a controller must decide when to \texttt{THINK}, \texttt{VERIFY}, \texttt{REVISE}, or \texttt{COMMIT} under a fixed action budget. Each task is a procedurally generated arithmetic chain with exact ground truth, one optional hidden faulty step, and a noisy one-bit local ambiguity cue that is observable but not perfectly reliable. We compare random play, three heuristics, outcome-only RL, naive process-reward RL, and a monitorability-aware process reward using a tiny masked DQN trained locally on an Apple M1 laptop. On train-like depths, the proposed reward is the strongest learned method: it reaches $0.601 \pm 0.052$ success versus $0.234 \pm 0.099$ for outcome-only RL and $0.187 \pm 0.048$ for naive process RL, while also improving failed-episode localization to $0.675 \pm 0.057$ and verification recall to $0.836 \pm 0.012$. But this behavior does not robustly generalize to longer held-out chains: held-out success drops to $0.112 \pm 0.035$, below outcome-only RL at $0.132 \pm 0.055$ and far below a simple hint-triggered heuristic at $0.819 \pm 0.019$. The strongest honest claim is therefore mechanistic rather than triumphant: monitorability-aware process rewards can induce ambiguity-focused verification in-distribution, but the resulting policy is brittle under length shift.
+We study when monitorability-aware process rewards help a tiny controller allocate verification under a strict reasoning budget. Our environment is a procedurally generated arithmetic chain with exact local checking, one optional hidden faulty step, backtracking, and a noisy one-bit ambiguity cue. A controller must choose among \texttt{THINK}, \texttt{VERIFY}, \texttt{REVISE}, and \texttt{COMMIT} while observing only compact partial state. We compare random play, heuristics, outcome-only RL, naive process rewards, and a monitorability-aware reward using a 5,124-parameter masked Double DQN trained locally on an Apple M1 laptop. On train-like depths, the proposed reward is the strongest learned method: it reaches $0.601 \pm 0.052$ success versus $0.234 \pm 0.099$ for outcome-only RL, and it learns cue-conditioned verification ($P(\texttt{VERIFY}\mid c{=}1)=0.381 \pm 0.030$ versus $0.142 \pm 0.034$ for $c{=}0$). But the policy remains brittle under longer held-out chains: held-out success drops to $0.112 \pm 0.035$, below outcome-only RL at $0.132 \pm 0.055$ and far below a simple hint-triggered heuristic at $0.819 \pm 0.019$. Cleaner cues improve diagnostics more than success, while noisier cues erode both. The main contribution is therefore mechanistic rather than algorithmic: monitorability-aware shaping can induce ambiguity-focused checking in-distribution, but that behavior does not become a robust longer-horizon repair policy.
 \end{abstract}
 
 \section{Introduction}
 Recent reasoning-model work emphasizes that both train-time and test-time compute can matter for hard reasoning \citep{openai_reasoning_2024,deepseek_r1_2025}. At the same time, recent monitorability work argues that chain-of-thought traces can expose failures better than outputs alone, but that this signal may trade off against capability and may itself be fragile \citep{openai_monitorability_2025}. Anthropic's faithfulness results sharpen the caution: even when a reasoning trace is available, it need not be a faithful account of what the model actually used \citep{anthropic_faithfulness_2025}. These observations motivate a smaller question than ``does process supervision help frontier models?'': under a strict reasoning budget, when does process-aware RL help a tiny controller allocate verification effort, and when does it overfit?
 
-We study that question in a deliberately small symbolic environment. The goal is not to chase benchmark scores or to compare against frontier language models. Instead, we construct a tiny partially observable arithmetic-chain environment with exact local checking, one optional hidden faulty transition, backtracking, a finite budget, and a noisy local ambiguity cue. The controller sees only a compact observation: normalized progress, remaining budget, a budget-slack feature, an unchecked-gap feature, the current ambiguity cue, whether it just revised, and the last verification status. This setup makes every relevant quantity exact: correctness, local fault hits, verification precision/recall, and failure localization can all be computed directly from environment state.
+We study that question in a deliberately small symbolic environment. The goal is not to chase benchmark scores or to compare against frontier language models. Instead, we construct a tiny partially observable arithmetic-chain environment with exact local checking, one optional hidden faulty transition, backtracking, a finite budget, and a noisy local ambiguity cue. The controller sees only a compact observation: normalized progress, remaining budget, a budget-slack feature, an unchecked-gap feature, the current ambiguity cue, whether it just revised, and the last verification status. This setup makes every relevant quantity exact: correctness, local fault hits, verification precision/recall, cue-conditioned verification rates, and failure localization can all be computed directly from environment state.
+
+We organize the empirical study around three falsifiable questions. First, does monitorability-aware shaping increase \emph{selective} verification at ambiguous steps, rather than just increasing verification volume? Second, does any gain depend on the quality of the local ambiguity cue? Third, if a selective policy is learned in-distribution, does it survive a length shift to longer chains? These questions are small enough to answer exactly in the symbolic setting, but still map onto the broader reasoning-RL themes of budgeted test-time compute, process supervision, and monitorability.
 
 The core result is a structured failure mode. A simple hand-coded hint-triggered heuristic, using only the observable ambiguity cue, solves both training-depth and held-out longer chains well, so the environment does admit a strong selective-verification policy. Outcome-only RL does not reliably discover it. The proposed monitorability-aware reward does learn a more diagnostic in-distribution policy than outcome-only or naive process rewards, but this policy remains brittle under a depth shift from 3--6 training steps to 7--9 held-out steps. The resulting paper is therefore best read as a concept-and-feasibility plus negative-result study: a tiny exact proxy can isolate ambiguity-focused checking behavior, but small-budget RL still fails to recover a robust version of that behavior.
 
-Concretely, the paper contributes three pieces: a tiny exact environment for budgeted process reasoning with local ambiguity cues, verification, and repair; a simple monitorability-aware reward that explicitly values informative verification and bounded unchecked gaps; and an empirical study showing that in-distribution ambiguity checking can improve while out-of-distribution robustness remains poor.
+Concretely, the paper contributes four pieces: a tiny exact environment for budgeted process reasoning with local ambiguity cues, verification, and repair; a simple monitorability-aware reward that explicitly values informative verification and bounded unchecked gaps; behavior-level diagnostics that measure whether a policy actually verifies more often on flagged ambiguous steps; and an empirical study showing that in-distribution ambiguity checking can improve while out-of-distribution robustness remains poor.
 
 \section{Related Work}
 \citet{openai_reasoning_2024} and \citet{deepseek_r1_2025} motivate reinforcement learning for reasoning and highlight the role of train-time and test-time compute. \citet{logic_rl_2025} argue that small, verifiable symbolic environments can reveal reasoning dynamics cheaply. We follow that spirit, but focus on a much smaller controller and a fixed budgeted control problem rather than a large language model.
@@ -99,12 +101,12 @@ RL uses a tiny masked Double DQN with a two-layer MLP and discrete action maskin
 y_t = r_t + \gamma (1-d_t)\, Q_{\bar{\theta}}\!\left(o_{t+1}, \arg\max_{a'} Q_{\theta}(o_{t+1},a')\right),
 \label{eq:dqn}
 \end{equation}
-with $\gamma=0.99$. The network is intentionally tiny; the point of the study is reward design and failure analysis under a small compute budget, not scaling.
+with $\gamma=0.99$. The network is intentionally tiny: the default controller has 5,124 trainable parameters. The point of the study is reward design and failure analysis under a small compute budget, not scaling.
 
 \section{Experimental Setup}
-The default environment uses training depths 3--6, held-out depths 7--9, fault probability $p_{\mathrm{fault}}=0.8$, unit action costs, and a budget equal to depth plus six extra actions. The ambiguity cue flags the true faulty step with high probability and produces occasional false positives on non-fault steps. We evaluate random play, \texttt{Always THINK}, \texttt{Verify Every Step}, a hand-coded \texttt{Hint-Triggered Heuristic}, outcome-only RL, naive process RL, and monitorability-aware RL. We also train four ablations of the proposed method: no budget penalty, no \texttt{VERIFY}, no \texttt{REVISE}, and no monitorability term.
+The default environment uses training depths 3--6, held-out depths 7--9, fault probability $p_{\mathrm{fault}}=0.8$, unit action costs, and a budget equal to depth plus six extra actions. The ambiguity cue flags the true faulty step with probability $0.85$ and produces false positives on non-fault steps with probability $0.15$. We evaluate random play, \texttt{Always THINK}, \texttt{Verify Every Step}, a hand-coded \texttt{Hint-Triggered Heuristic}, outcome-only RL, naive process RL, and monitorability-aware RL. We also train four ablations of the proposed method: no budget penalty, no \texttt{VERIFY}, no \texttt{REVISE}, and no monitorability extras. The last ablation removes the cue-conditioned bonuses/penalties and unchecked-gap penalty while retaining only the basic safe/fault process bonuses.
 
-The full experiment uses five random seeds unless otherwise stated, with 300 procedurally generated evaluation episodes per seed and setting. All runs are local and CPU-compatible; the reported experiments were executed on a MacBook Air with an Apple M1 chip. The repository remains well under the 1\,GB footprint target and requires no external datasets, pretrained models, or cloud resources.
+The full experiment uses five random seeds unless otherwise stated, with 300 procedurally generated evaluation episodes per seed and setting. In total, the paper trains 35 learned models (7 learned variants times 5 seeds), each for 5{,}000 episodes, and evaluates 198{,}000 episodes across 12 settings, 11 methods, and 5 seeds. We report mean $\pm$ standard error over seeds throughout. All runs are local and CPU-compatible; the reported experiments were executed on a MacBook Air with an Apple M1 chip. The repository remains well under the 1\,GB footprint target and requires no external datasets, pretrained models, or cloud resources.
 
 \section{Results}
 \subsection{A strong selective policy exists}
@@ -113,15 +115,17 @@ The first important sanity check is that the environment does support a strong p
 \subsection{Monitorability-aware RL helps in-distribution}
 On train-like depths, the monitorability-aware reward is the strongest learned method. It reaches $0.601 \pm 0.052$ success, compared with $0.234 \pm 0.099$ for outcome-only RL and $0.187 \pm 0.048$ for naive process RL. It also checks much more effectively than outcome-only RL, with verification recall $0.836 \pm 0.012$ versus $0.318 \pm 0.131$, and it raises failed-episode localization from $0.259 \pm 0.116$ to $0.675 \pm 0.057$. Relative to the naive process reward, it not only succeeds more often but also localizes failures more cleanly ($0.675$ versus $0.152$). This is the main positive result of the paper: explicit ambiguity-aware process rewards can induce short-horizon checking behavior in a tiny controller.
 
+The new behavior-level diagnostics show that this is not just more verification volume. On train-like depths, monitorability-aware RL verifies much more often when the cue indicates local ambiguity than when it does not: $P(\texttt{VERIFY}\mid c{=}1)=0.381 \pm 0.030$ versus $0.142 \pm 0.034$ for $c{=}0$ (Appendix Figure~\ref{fig:selectivity}). Outcome-only RL is not selective by the same measure ($0.261 \pm 0.066$ versus $0.279 \pm 0.057$), while the hint-triggered heuristic is the idealized extreme ($0.464 \pm 0.002$ versus $0.000$). The monitorability reward therefore changes \emph{where} the controller spends verification budget, not only how much of it it spends.
+
 Figure~\ref{fig:main} and Table~\ref{tab:main} summarize the main comparison. Two patterns matter more than raw score. First, monitorability-aware RL is much more diagnostic than outcome-only RL: it checks more often, localizes failures earlier, and attains much higher verification recall. Second, a large gap remains between the learned policy and the simple hint-triggered heuristic, which means the learned controller is still only partially exploiting the available cue.
 
-The ablations sharpen this point. On train-like depths, the full proposed reward is stronger than its monitorability ablations: removing the budget penalty lowers success to $0.479 \pm 0.077$, removing the monitorability term lowers it to $0.520 \pm 0.081$, removing \texttt{REVISE} lowers it to $0.186 \pm 0.009$, and removing \texttt{VERIFY} collapses to zero. In-distribution, the complete reward is therefore not just different but genuinely useful.
+The ablations sharpen this point. On train-like depths, the full proposed reward is stronger than its monitorability ablations: removing the budget penalty lowers success to $0.479 \pm 0.077$, removing the monitorability extras lowers it to $0.387 \pm 0.087$, removing \texttt{REVISE} lowers it to $0.186 \pm 0.009$, and removing \texttt{VERIFY} collapses to zero. In-distribution, the complete reward is therefore not just different but genuinely useful.
 
 \begin{table}[t]
 \centering
 \small
 \setlength{\tabcolsep}{3pt}
-\caption{Main metrics on train-like and held-out longer depths.}
+\caption{Main metrics on train-like and held-out longer depths; entries are mean $\pm$ standard error over five seeds.}
 \label{tab:main}
 \resizebox{\linewidth}{!}{\input{tables/main_results.tex}}
 \end{table}
@@ -129,7 +133,7 @@ The ablations sharpen this point. On train-like depths, the full proposed reward
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figures/method_comparison.pdf}
-\caption{Main train-like comparison. A strong hand-coded hint-triggered policy exists; monitorability-aware RL improves checking behavior relative to learned baselines but does not close the gap.}
+\caption{Main train-like comparison. Error bars show standard error over five seeds. A strong hand-coded hint-triggered policy exists; monitorability-aware RL improves checking behavior relative to learned baselines but does not close the gap.}
 \label{fig:main}
 \end{figure}
 
@@ -138,7 +142,9 @@ The main negative result appears under the depth shift from 3--6 training steps 
 
 This creates a clean mechanism story rather than a clean algorithmic win. Process-aware shaping can indeed move the learned policy toward ambiguity-focused verification. But the learned controller overfits the short-horizon budget regime: it learns to check, yet fails to translate that checking into a reliable longer-chain repair-and-commit strategy.
 
-The held-out ablations support that interpretation. Removing the budget penalty raises held-out success from $0.112 \pm 0.035$ to $0.291 \pm 0.090$, though cost-adjusted accuracy remains negative. Removing the explicit monitorability term also improves held-out success to $0.225 \pm 0.031$. By contrast, removing \texttt{VERIFY} collapses held-out success to zero, while removing \texttt{REVISE} yields only $0.139 \pm 0.019$. The full proposed shaping is therefore best viewed as an in-distribution inducer of checking behavior that over-commits to that behavior under length shift.
+Cue-quality robustness supports that interpretation. When we evaluate the held-out policies under cleaner cues (fault-step hit rate $0.95$, false-positive rate $0.05$), the hint-triggered heuristic rises to $0.939 \pm 0.005$ success and monitorability-aware RL rises modestly to $0.137 \pm 0.038$, with failure localization $0.629 \pm 0.093$ (Appendix Table~\ref{tab:cue_shift}). Under noisier cues ($0.60/0.35$), the heuristic drops sharply to $0.512 \pm 0.017$ and monitorability-aware RL drops to $0.083 \pm 0.037$, with localization falling to $0.441 \pm 0.061$. The learned policy therefore does use the cue, but it converts better cues into diagnostics more reliably than into successful longer-horizon repair.
+
+The held-out ablations support that interpretation. Removing the budget penalty raises held-out success from $0.112 \pm 0.035$ to $0.291 \pm 0.090$, though cost-adjusted accuracy remains negative. Removing the cue/gap monitorability extras raises held-out success only modestly to $0.141 \pm 0.053$, but also cuts failed-episode localization from $0.556 \pm 0.083$ to $0.305 \pm 0.138$. By contrast, removing \texttt{VERIFY} collapses held-out success to zero, while removing \texttt{REVISE} yields only $0.139 \pm 0.019$. The full proposed shaping is therefore best viewed as an in-distribution inducer of checking behavior that trades away held-out efficiency for much stronger diagnostics.
 
 \begin{figure}[t]
 \centering
@@ -165,7 +171,7 @@ In that sense the paper succeeds as a mechanism study. The ambiguity cue is enou
 \section{Limitations}
 This work remains intentionally tiny. The controller is a small MLP over a symbolic state, not a language model; the environment contains at most one hidden fault; the ambiguity cue is hand-designed; and the local arithmetic-chain abstraction does not capture the semantic ambiguity or strategic concealment that matter in real chain-of-thought settings. The hint-triggered heuristic also shows that part of the difficulty here is simply learning a short program from small-budget RL, not discovering a fundamentally unavailable strategy.
 
-The empirical limitation is more important: the learned monitorability-aware policy does look promising in-distribution, but it still fails under a simple length shift. The strongest honest conclusion is not that the proposed reward solves budgeted process supervision, but that it reveals a sharp overfitting mode in tiny process-aware RL.
+The empirical limitation is more important: the learned monitorability-aware policy does look promising in-distribution, but it still fails under a simple length shift. The strongest honest conclusion is not that the proposed reward solves budgeted process supervision, but that it reveals a sharp overfitting mode in tiny process-aware RL. A related societal risk is over-interpretation: toy monitorability gains in exact symbolic settings could be mistaken for evidence that natural-language chain-of-thought is faithful or robustly monitorable in realistic systems. This paper should not be read that way.
 
 \section{Conclusion}
 We introduced a tiny symbolic environment for studying budgeted process supervision with exact local checking, backtracking, and noisy ambiguity cues. In this proxy, ambiguity-aware process rewards can induce in-distribution checking behavior, but the resulting policies remain brittle under longer held-out chains. The main contribution is therefore diagnostic: exact small-scale environments can reveal how process rewards shape verification behavior, and can show clearly when those gains fail to become robust reasoning improvements.
@@ -176,20 +182,57 @@ We introduced a tiny symbolic environment for studying budgeted process supervis
 \appendix
 
 \section{Additional Experimental Details}
-Training uses a tiny masked Double DQN with 64 hidden units per layer and Adam with learning rate $10^{-3}$. The full run uses five random seeds, 5000 training episodes per seed and variant, and 300 evaluation episodes per seed and setting. All tasks are procedurally generated online.
+Training uses a tiny masked Double DQN with 64 hidden units per layer and Adam with learning rate $10^{-3}$. The observation dimension is 10, the action space has size 4, and the default controller has 5,124 trainable parameters. The full run trains 35 learned models (7 learned variants times 5 seeds), each for 5,000 episodes, for a total of 175,000 training episodes. Evaluation uses 12 settings, 11 methods, 5 seeds, and 300 episodes per seed, for a total of 198,000 evaluation episodes. All tasks are procedurally generated online.
 
-\section{Additional Diagnostics}
-Figure~\ref{fig:diag} reports train-like verification precision and recall. The proposed reward should be read jointly with the main success and localization metrics: high recall alone is not enough, because verify-every-step remains inefficient, while a low-checking outcome-only policy can miss most faults entirely.
+\begin{table}[h]
+\centering
+\small
+\caption{Default environment and learner hyperparameters used for the main study.}
+\label{tab:hparams}
+\begin{tabular}{ll}
+\toprule
+Quantity & Value \\
+\midrule
+Training depths & 3--6 \\
+Held-out depths & 7--9 \\
+Fault probability & 0.8 \\
+Hint hit / false-positive rates & 0.85 / 0.15 \\
+Budget & depth $+ 6$ actions \\
+Action costs (\texttt{THINK}, \texttt{VERIFY}, \texttt{REVISE}) & $(1,1,1)$ \\
+Network & 10--64--64--4 ReLU MLP \\
+Trainable parameters & 5,124 \\
+Optimizer / learning rate & Adam / $10^{-3}$ \\
+Discount factor & 0.99 \\
+Replay size / batch size & 25,000 / 64 \\
+Episodes per run / seeds & 5,000 / 5 \\
+$(\lambda_{\mathrm{safe}}, \lambda_{\mathrm{fault}}, \lambda_{\mathrm{hint}}, \lambda_{\mathrm{waste}}, \lambda_{\mathrm{gap}})$ & $(0.02, 0.25, 0.18, 0.06, 0.30)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Behavior-Level Diagnostics}
+Figure~\ref{fig:selectivity} reports cue-conditioned verification rates. This is the most direct diagnostic of the paper's mechanism claim: monitorability-aware RL should verify \emph{selectively}, not merely verify more often. The figure shows that the learned policy does become cue-sensitive in-distribution and remains partially cue-sensitive under the held-out length shift, whereas outcome-only RL is much less selective.
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=\linewidth]{figures/verification_diagnostics.pdf}
-\caption{Verification precision and recall on train-like tasks. Process-aware rewards improve checking behavior, but not all checking policies convert diagnostics into successful longer-horizon control.}
-\label{fig:diag}
+\includegraphics[width=\linewidth]{figures/selectivity_diagnostics.pdf}
+\caption{Cue-conditioned verification rates. The proposed reward induces more selective checking than outcome-only RL, but still falls short of the hand-coded hint-triggered heuristic, especially under the held-out shift.}
+\label{fig:selectivity}
 \end{figure}
 
+\section{Cue-Quality Robustness}
+Table~\ref{tab:cue_shift} evaluates held-out longer chains under cleaner and noisier ambiguity cues \emph{without retraining}. This isolates whether the learned policy actually relies on the local cue. Cleaner cues help both the heuristic and the monitorability-aware policy, while noisier cues hurt both, which supports the interpretation that the process-aware policy does learn cue-dependent behavior. But the learned policy turns improved cue quality into better localization more reliably than into better success.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Held-out longer-chain performance under cleaner and noisier ambiguity cues, without retraining. Entries are mean $\pm$ standard error over five seeds.}
+\label{tab:cue_shift}
+\resizebox{\linewidth}{!}{\input{tables/cue_shift_results.tex}}
+\end{table}
+
 \section{External Assets}
-The paper uses the official NeurIPS 2026 style bundle from \url{https://neurips.cc}, the \texttt{lineno} package under the \LaTeX{} Project Public License, and the Latin Modern font package under the GUST Font License / LPPL terms. The experiments use only the Python dependencies listed in \texttt{requirements.txt}; no external datasets, pretrained models, or proprietary APIs are required.
+The paper uses the official NeurIPS 2026 style bundle from \url{https://neurips.cc}, the \texttt{lineno} package under the \LaTeX{} Project Public License, and the Latin Modern font package under the GUST Font License / LPPL terms. The experiments use only the Python dependencies listed in \texttt{requirements.txt}; no external datasets, pretrained models, or proprietary APIs are required. For anonymous submission to a workshop or conference, code and artifacts should be shared through an anonymized supplement or anonymous repository link rather than the named development repository used during project preparation.
 
 \input{checklist.tex}
 

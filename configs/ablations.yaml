@@ -18,4 +18,7 @@ train_variants:
     display_name: Monitorability RL w/o Monitorability Term
     env_overrides:
       reward_scheme: monitorability_aware
+      ma_hint_verify_bonus: 0.0
+      ma_low_hint_penalty: 0.0
+      ma_waste_verify_penalty: 0.0
       ma_opaque_penalty: 0.0

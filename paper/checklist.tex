@@ -17,7 +17,7 @@
 \item {\bf Limitations}
     \item[] Question: Does the paper discuss the limitations of the work performed by the authors?
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section ``Limitations'' explicitly discusses the narrow symbolic environment, hand-designed hazard profile, tabular controller, and the weak out-of-distribution results.
+    \item[] Justification: Section ``Limitations'' explicitly discusses the narrow symbolic environment, hand-designed ambiguity cue, tiny masked Double DQN controller, and the weak out-of-distribution results.
     \item[] Guidelines:
     \begin{itemize}
         \item The answer \answerNA{} means that the paper has no limitation while the answer \answerNo{} means that the paper has limitations, but those are not discussed in the paper. 
@@ -84,7 +84,7 @@
 \item {\bf Experimental setting/details}
     \item[] Question: Does the paper specify all the training and test details (e.g., data splits, hyperparameters, how they were chosen, type of optimizer) necessary to understand the results?
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section ``Experimental Setup'' gives the train/test depth split, budgets, reward settings, seed count, and hardware, while the appendix records the tabular Q-learning hyperparameters.
+    \item[] Justification: Section ``Experimental Setup'' gives the train/test depth split, budgets, reward settings, seed count, and hardware, while the appendix records the masked Double DQN and reward hyperparameters.
     \item[] Guidelines:
     \begin{itemize}
         \item The answer \answerNA{} means that the paper does not include experiments.
@@ -112,7 +112,7 @@
 \item {\bf Experiments compute resources}
     \item[] Question: For each experiment, does the paper provide sufficient information on the computer resources (type of compute workers, memory, time of execution) needed to reproduce the experiments?
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section ``Experimental Setup'' reports the Apple M1 laptop, CPU-only execution, 8\,GB memory, approximate wall-clock span, and repository footprint.
+    \item[] Justification: Section ``Experimental Setup'' and Appendix Table~\ref{tab:hparams} report the Apple M1 laptop, CPU compatibility, model size, training and evaluation episode counts, and repository footprint.
     \item[] Guidelines:
     \begin{itemize}
         \item The answer \answerNA{} means that the paper does not include experiments.
@@ -136,7 +136,7 @@
 \item {\bf Broader impacts}
     \item[] Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed?
     \item[] Answer: \answerYes{}
-    \item[] Justification: Section ``Discussion'' notes the positive value of cheap exact testbeds and the negative risk of over-interpreting toy monitorability results as evidence about real model faithfulness.
+    \item[] Justification: Section ``Limitations'' notes both the value of cheap exact testbeds and the negative risk of over-interpreting toy monitorability results as evidence about real model faithfulness.
     \item[] Guidelines:
     \begin{itemize}
         \item The answer \answerNA{} means that there is no societal impact of the work performed.
@@ -214,7 +214,7 @@
     \item[] Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does \emph{not} impact the core methodology, scientific rigor, or originality of the research, declaration is not required.
     %this research? 
     \item[] Answer: \answerNA{}
-    \item[] Justification: No large language model is part of the reported environment, learner, reward design, or evaluation pipeline; the core method is a symbolic environment with tabular reinforcement learning.
+    \item[] Justification: No large language model is part of the reported environment, learner, reward design, or evaluation pipeline; the core method is a symbolic environment with a tiny masked Double DQN.
     \item[] Guidelines:
     \begin{itemize}
         \item The answer \answerNA{} means that the core method development in this research does not involve LLMs as any important, original, or non-standard components.
