@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this code or build on these results, please cite it as below."
+title: "UltraRL: When does process-aware reward teach a small agent to verify?"
+authors:
+  - family-names: Kashikar
+    given-names: Raj
+repository-code: "https://github.com/raj200501/UltraRL"
+license: MIT
+version: 1.0.0
+date-released: 2026-10-21

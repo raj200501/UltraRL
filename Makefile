@@ -1,25 +1,40 @@
-PYTHON := ./.venv/bin/python
-DEFAULT_CONFIG := configs/default.yaml
-ABLATIONS_CONFIG := configs/ablations.yaml
+PYTHON ?= python
+WORKERS ?= 4
 
-.PHONY: smoke train eval analyze paper all
+.PHONY: install test lint smoke main ablations sensitivity experiments report paper all clean
 
-smoke:
-	PYTHONPATH=. $(PYTHON) src/envs.py --sanity
-	PYTHONPATH=. $(PYTHON) src/train.py --config $(DEFAULT_CONFIG) --ablations $(ABLATIONS_CONFIG) --mode smoke
-	PYTHONPATH=. $(PYTHON) src/evaluate.py --config $(DEFAULT_CONFIG) --ablations $(ABLATIONS_CONFIG) --mode smoke
-	PYTHONPATH=. $(PYTHON) src/analysis.py --config $(DEFAULT_CONFIG)
+install:  ## editable install with dev tools (CPU torch is enough)
+	$(PYTHON) -m pip install -e ".[dev]"
 
-train:
-	PYTHONPATH=. $(PYTHON) src/train.py --config $(DEFAULT_CONFIG) --ablations $(ABLATIONS_CONFIG) --mode full
+test:
+	$(PYTHON) -m pytest
 
-eval:
-	PYTHONPATH=. $(PYTHON) src/evaluate.py --config $(DEFAULT_CONFIG) --ablations $(ABLATIONS_CONFIG) --mode full
+lint:
+	ruff check src tests scripts
+	ruff format --check src tests scripts
 
-analyze:
-	PYTHONPATH=. $(PYTHON) src/analysis.py --config $(DEFAULT_CONFIG)
+smoke:  ## ~20 s end-to-end run of the whole pipeline
+	$(PYTHON) -m ultrarl.run --config configs/main.yaml --out results/smoke --smoke --workers $(WORKERS)
 
-paper:
-	bash scripts/compile_paper.sh
+main:
+	$(PYTHON) -m ultrarl.run --config configs/main.yaml --out results/main --workers $(WORKERS)
 
-all: train eval analyze paper
+ablations:
+	$(PYTHON) -m ultrarl.run --config configs/ablations.yaml --out results/ablations --workers $(WORKERS)
+
+sensitivity:
+	$(PYTHON) -m ultrarl.run --config configs/sensitivity.yaml --out results/sensitivity --workers $(WORKERS)
+
+experiments: main ablations sensitivity
+
+report:  ## figures + tables from results/ (no training needed)
+	$(PYTHON) -m ultrarl.report --results results --paper paper
+
+paper: report
+	cd paper && latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
+
+all: experiments paper
+
+clean:
+	rm -rf results/smoke
+	cd paper && latexmk -C main.tex

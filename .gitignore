@@ -1,4 +1,19 @@
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 .DS_Store
+# LaTeX build artefacts (paper/main.pdf is committed)
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.synctex.gz
+# scratch outputs
+/tmp/
+results/smoke/
