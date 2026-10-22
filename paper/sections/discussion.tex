@@ -31,7 +31,7 @@ The code, experiments, analysis and drafting of this revision (from commit \text
 \paragraph{Reproducibility.}
 All code, configs, trained checkpoints, learning curves and per-seed evaluation results are in the accompanying repository (\url{https://github.com/raj200501/UltraRL}).
 \begin{itemize}
-  \item \texttt{make report} and \texttt{make paper} rebuild every figure, table and generated number in this paper from the saved results, and CI checks that the committed tables and numbers match.
+  \item \texttt{make report} and \texttt{make paper} rebuild every figure, table and generated number in this paper from the saved results, and CI checks that the committed figures, tables and numbers match byte for byte.
   \item \texttt{make reproduce} retrains every agent from scratch, about \val{runs/reproduce_hours_on_4_cores} hours on a 4-core CPU, and checks the checkpoints bitwise against the saved ones (with the pinned package versions on an AVX-512 CPU; Appendix~\ref{app:hparams} gives a statistical check for other hardware).
   \item \texttt{make equivalence} compares the environment with the original implementation, which is vendored in the repository.
 \end{itemize}

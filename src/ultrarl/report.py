@@ -58,6 +58,7 @@ plt.rcParams.update(
         "legend.frameon": False,
         "savefig.bbox": "tight",
         "savefig.dpi": 220,
+        "svg.hashsalt": "ultrarl",  # fixed element ids, so the SVG bytes are reproducible
     }
 )
 
@@ -72,10 +73,15 @@ def label(method: str) -> str:
     return f"{SCHEME_LABEL[scheme]} ({OBS_LABEL[obs]})"
 
 
+PREVIEWS = {"length_generalization"}  # also written as SVG for the README
+
+
 def save(fig: plt.Figure, out: Path, name: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out / f"{name}.pdf", metadata={"CreationDate": None})  # reproducible bytes
-    fig.savefig(out / f"{name}.png")
+    # vector formats only, so CI can compare bytes: PNG pixels differ between machines
+    fig.savefig(out / f"{name}.pdf", metadata={"CreationDate": None})
+    if name in PREVIEWS:
+        fig.savefig(out / f"{name}.svg", metadata={"Date": None})
     plt.close(fig)
 
 

@@ -173,24 +173,3 @@ def test_show_episode_classifies_the_action_after_a_catch():
     ]
     assert show.after_catch(lines) == {"repair", "continue"}
     assert show.after_catch(lines[:3]) == {"repair"}
-
-
-def test_compare_pngs_ignores_compression_but_not_pixels():
-    from io import BytesIO
-
-    from PIL import Image
-
-    compare = _load("compare_pngs")
-    image = np.zeros((8, 8, 4), dtype=np.uint8)
-    image[2:5, 3:6] = (200, 30, 30, 255)
-
-    def png(array, level):
-        out = BytesIO()
-        Image.fromarray(array).save(out, format="png", compress_level=level)
-        return out.getvalue()
-
-    fast, small = png(image, 1), png(image, 9)
-    assert fast != small and compare.same_pixels(fast, small)
-    changed = image.copy()
-    changed[0, 0, 0] = 1
-    assert not compare.same_pixels(fast, png(changed, 1))

@@ -110,6 +110,7 @@ def generated(tmp_path_factory):
 def test_report_writes_every_figure_and_table(generated):
     for name in ("length_generalization", "learning_curves", "cue_selectivity", "policy_churn", "optimal_decisions"):
         assert (generated / "figures" / f"{name}.pdf").exists()
+    assert (generated / "figures" / "length_generalization.svg").exists()  # the README preview
     for name in (
         "main_results",
         "main_results_final",
