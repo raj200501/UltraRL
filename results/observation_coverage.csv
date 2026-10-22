@@ -1,0 +1,9 @@
+observation,setting,unseen_fraction,points
+absolute,heldout_long,1.0,157647
+absolute,heldout_xlong,1.0,207138
+invariant,heldout_long,0.020127246316136684,157647
+invariant,heldout_xlong,0.05115430292848246,207138
+ratio,heldout_long,0.5143136247438899,157647
+ratio,heldout_xlong,0.7163292104780388,207138
+memory,heldout_long,0.03940449231510907,157647
+memory,heldout_xlong,0.07420173990286669,207138

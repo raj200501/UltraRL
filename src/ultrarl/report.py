@@ -266,12 +266,12 @@ def table_ablation(summary: pd.DataFrame, out: Path, name: str = "ablation_resul
                 display(summary, m),
                 fmt(row(summary, "train_like", m), "success"),
                 fmt(row(summary, "heldout_long", m), "success"),
-                fmt(row(summary, "heldout_long", m), "fault_detected"),
-                fmt(row(summary, "heldout_long", m), "verify_rate_cue1"),
-                fmt(row(summary, "heldout_long", m), "verify_rate_cue0"),
+                fmt(row(summary, "heldout_xlong", m), "success"),
+                f"{row(summary, 'heldout_long', m)['verify_rate_cue1']:.2f}",
+                f"{row(summary, 'heldout_long', m)['verify_rate_cue0']:.2f}",
             ]
         )
-    header = ["Variant", "Success 3--6", "Success 7--9", "Detect 7--9", "$P(V\\mid c{=}1)$", "$P(V\\mid c{=}0)$"]
+    header = ["Variant", "Success 3--6", "Success 7--9", "Success 10--14", "$P(V\\mid c{=}1)$", "$P(V\\mid c{=}0)$"]
     (out / f"{name}.tex").write_text(latex_table(header, rows, "lccccc"), encoding="utf-8")
 
 
@@ -486,6 +486,15 @@ def main(argv: list[str] | None = None) -> None:
         if path.exists():
             summaries[name] = pd.read_csv(path)
             table_ablation(summaries[name], tables, name=f"{name}_results")
+    if "ablations" in summaries:
+        ablation_seeds = pd.read_csv(results / "ablations" / "eval_per_seed.csv")
+        variants = [m for m in summaries["ablations"].method.unique() if m != "ma_inv" and not m.endswith(FINAL)]
+        pairs = [("ma_inv", m, s) for m in variants for s in ("train_like", "heldout_long", "heldout_xlong")]
+        extras.update(comparison_macros(key_numbers(ablation_seeds, pairs), prefix="abl"))
+    coverage_path = results / "observation_coverage.csv"
+    if coverage_path.exists():
+        for _, c in pd.read_csv(coverage_path).iterrows():
+            extras[f"coverage/{c['observation']}/{c['setting']}/unseen_rate"] = c["unseen_fraction"]
     followup_dir = results / "followups"
     if (followup_dir / "eval_summary.csv").exists():
         summaries["followups"] = pd.read_csv(followup_dir / "eval_summary.csv")

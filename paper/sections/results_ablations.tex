@@ -1,1 +1,20 @@
-\subsection{Reward ablations}\label{sec:ablations} (pending)
+\subsection{Which reward terms matter}
+\label{sec:ablations}
+
+Table~\ref{tab:ablations} removes one group of terms at a time from the monitorability-aware reward, with invariant observations and 10 seeds each. Because every variant is evaluated on the same episodes as the full reward, the differences below are paired.
+\begin{itemize}
+  \item \textbf{Cue terms.} The cue terms (the bonus for informative checks of cued steps and the small penalty for checking un-cued ones) are the only component whose removal substantially hurts generalization. Without them, held-out success drops by \val{abl/ma_inv-no_cue_terms/heldout_long/success} [\val{abl/ma_inv-no_cue_terms/heldout_long/success/lo}, \val{abl/ma_inv-no_cue_terms/heldout_long/success/hi}] at lengths 7--9 and by \val{abl/ma_inv-no_cue_terms/heldout_xlong/success} [\val{abl/ma_inv-no_cue_terms/heldout_xlong/success/lo}, \val{abl/ma_inv-no_cue_terms/heldout_xlong/success/hi}] at 10--14 ($p = \val{abl/ma_inv-no_cue_terms/heldout_xlong/success/p}$), while training-length success barely changes (\val{ablations/no_cue_terms/train_like/success} vs.\ \val{ablations/ma_inv/train_like/success}). The mechanism is visible in the checking rates. Without the cue terms, agents check un-cued steps at about twice the rate (\val{ablations/no_cue_terms/heldout_long/verify_rate_cue0} vs.\ \val{ablations/ma_inv/heldout_long/verify_rate_cue0} at 7--9). That costs little on short chains, but spends the slack that long chains need.
+  \item \textbf{Cue bonus alone.} Conversely, the cue bonus alone, with every other process term removed, is indistinguishable from the full reward (\val{ablations/cue_bonus_only/heldout_long/success} at 7--9 and \val{ablations/cue_bonus_only/heldout_xlong/success} at 10--14, vs.\ \val{ablations/ma_inv/heldout_long/success} and \val{ablations/ma_inv/heldout_xlong/success}).
+  \item \textbf{Other terms.} Removing the unchecked-gap term or the wasted-check penalty has no resolvable effect. Removing the safe/fault check bonuses, or all of the cue, gap and waste terms together, lowers held-out success moderately. Removing the per-action cost hurts at every length.
+  \item \textbf{No \texttt{REVISE}.} Without \texttt{REVISE}, a caught fault cannot be repaired and success falls to the never-check level (\val{ablations/no_revise/train_like/success}).
+\end{itemize}
+In short, most of what the monitorability-aware reward contributes in this environment comes from one term: paying for checks where a trusted cue says checking is valuable.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\caption{Reward ablations (invariant observations; mean over 10 seeds, 95\% $t$-interval). $P(V \mid c)$: probability of checking at a decision point whose current step is unchecked with cue $c$, at lengths 7--9.}
+\label{tab:ablations}
+\resizebox{\linewidth}{!}{\input{tables/ablations_results.tex}}
+\end{table}
