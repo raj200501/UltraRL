@@ -18,17 +18,15 @@ differ in how position is represented:
 
 ``ratio`` (10-d)
     the invariant features plus slack per remaining step,
-    ``clip(slack / max(1, d - t), 0, 2) / 2``. This tells the agent how thinly its
-    slack must be spread without revealing absolute length.
+    ``clip(slack / max(1, d - t), 0, 2) / 2``: how thinly the remaining slack must
+    be spread. This exposes remaining length in a bounded form (it reveals ``d``
+    at ``t = 0``), so unlike ``invariant`` it takes unseen values on longer chains.
 
 ``memory`` (10-d)
     the invariant features plus a one-bit memory of whether an UNSAFE check has
     been observed in this episode. Without it, a genuine repair (UNSAFE, REVISE,
     THINK) and a no-op REVISE+THINK after a SAFE check produce identical
     observations.
-
-``ratio`` reveals relative length (``d`` itself at ``t = 0``) and is therefore
-not length-invariant; it is a follow-up probe, not a length-invariant encoder.
 
 Budget slack ``b - (d - t)`` is the number of non-THINK actions the agent can
 still afford while finishing the chain.
