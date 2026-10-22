@@ -1,11 +1,13 @@
 {
-  "config_sha256": "a302a4bf06be3f681762c8f2a52b3d68f24022cb1ad18f5b0b32f9f61c41406e",
+  "config_sha256": "a2ae7693da1a8403611ef6b03b2a5de8ac333739c8d4afce68bc855c21853eec",
   "smoke": false,
   "platform": {
     "python": "3.13.16",
     "torch": "2.14.1+cpu",
     "numpy": "2.5.4",
     "platform": "Linux-6.18.44-fc-v140-x86_64-with-glibc2.39",
-    "cpu_capability": "AVX512"
+    "cpu_capability": "AVX512",
+    "blas": "mkl",
+    "mkl": "True"
   }
 }

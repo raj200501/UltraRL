@@ -199,6 +199,7 @@ class ChainEnv:
         self.max_budget = self.depth + cfg.budget_extra
         self.remaining_budget = self.max_budget
         self.checked: set[int] = set()
+        self.correct_steps: set[int] = set()  # steps that have been executed correctly at least once
         self.fault_located = False
         self.repaired = False
         self.last_verify = VerifyStatus.NONE
@@ -339,6 +340,9 @@ class ChainEnv:
         self.beliefs.append(apply_op(self.beliefs[-1], op))
         self.step_idx += 1
         event.think_valid = self.belief_valid
+        event.first_correct = self.belief_valid and t not in self.correct_steps
+        if self.belief_valid:
+            self.correct_steps.add(t)
         if t == self.fault_index and self.fault_located and not self.repaired and self.belief_valid:
             self.repaired = True  # first correct re-execution of the located fault
             event.repaired = True

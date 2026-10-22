@@ -1,17 +1,26 @@
-"""How novel are held-out observations under a learned agent's own behaviour, and does
-the agent act differently on the novel ones?
+"""How novel are observations under a learned agent's own behaviour, and where does
+the agent spend budget it cannot afford?
 
     python scripts/agent_coverage.py   # writes results/agent_coverage.csv
 
 ``observation_coverage.py`` measures novelty under the hand-coded policies, which
 isolates the encoder. Here each selected checkpoint is instead rolled out greedily:
-its own training-length rollouts form the reference sample, and on fresh
-episodes of every length we record which decision points have an observation
-outside that sample, and how often the agent checks an un-cued unchecked step at
-seen and at unseen points. If over-checking on long chains came from novel
-inputs, it would be concentrated at the unseen points. We also record how often
-the whole episode so far fits in the action-history window (``HISTORY_LENGTH``
-actions), so that the window reveals position and the full record of checks.
+its own training-length rollouts form the reference sample, and on fresh episodes
+of every length we record
+
+* the share of decision points whose observation is outside that sample;
+* at decision points with no slack left and the chain unfinished, where any
+  ``VERIFY`` or ``REVISE`` makes finishing impossible, how often the agent spends
+  anyway, separately at familiar and at unseen observations (comparing points
+  with the same slack avoids the confound that unseen observations come late in
+  long episodes, when slack is low);
+* the slack spent per episode at familiar and at unseen observations (a
+  ``VERIFY`` uses one unit, a ``REVISE`` two, counting the redone step);
+* the un-cued check rate in the first half of the chain, where most of the slack
+  is spent;
+* how often the whole episode so far fits in the action-history window
+  (``HISTORY_LENGTH`` actions), so that the window reveals position and the full
+  record of checks.
 """
 
 import multiprocessing as mp
@@ -36,11 +45,9 @@ METHODS = {
 REFERENCE_EPISODES, EPISODES = 2000, 500
 
 
-def rollouts(agent: DQNAgent, env: ChainEnv, stream: int, seed: int, setting, episodes: int):
-    """Observation keys at every decision point; for points where an un-cued unchecked
-    step could be checked, whether the agent checked it (None elsewhere); and whether the
-    episode so far fits in the history window."""
-    keys, uncued, whole = [], [], []
+def rollouts(agent: DQNAgent, env: ChainEnv, stream: int, seed: int, setting, episodes: int) -> pd.DataFrame:
+    """One row per decision point of greedy rollouts."""
+    rows = []
     for i in range(episodes):
         obs = env.reset(seed=episode_seed(stream, seed, i, setting.name), depth_range=setting.depth_range)
         done = False
@@ -48,12 +55,24 @@ def rollouts(agent: DQNAgent, env: ChainEnv, stream: int, seed: int, setting, ep
             mask = env.action_mask()
             action = agent.act(obs, mask)
             o = env.observable()
-            fresh = o.step > 0 and not o.step_checked and mask[Action.VERIFY] and o.cue == 0
-            keys.append(np.round(obs, 6).tobytes())
-            uncued.append(action == Action.VERIFY if fresh else None)
-            whole.append(len(env.events) <= HISTORY_LENGTH)
+            rows.append(
+                {
+                    "key": np.round(obs, 6).tobytes(),
+                    "uncued": bool(o.step > 0 and not o.step_checked and mask[Action.VERIFY] and o.cue == 0),
+                    "verify": action == Action.VERIFY,
+                    "spend": action in (Action.VERIFY, Action.REVISE),
+                    "cost": {Action.VERIFY: 1, Action.REVISE: 2}.get(Action(action), 0),
+                    "broke": o.slack == 0 and o.step < o.depth,  # spending now leaves too little to finish
+                    "early": o.step <= o.depth / 2,
+                    "whole": len(env.events) <= HISTORY_LENGTH,
+                }
+            )
             obs, _, done, _ = env.step(action)
-    return keys, uncued, whole
+    return pd.DataFrame(rows)
+
+
+def _rate(values: pd.Series) -> float:
+    return float(values.mean()) if len(values) else float("nan")
 
 
 def job(args: tuple[str, str, int]) -> list[dict]:
@@ -64,28 +83,29 @@ def job(args: tuple[str, str, int]) -> list[dict]:
     settings = {s.name: s for s in exp.eval_settings if not s.env_overrides}
     agent, _ = DQNAgent.load(checkpoint_path(ROOT / "results" / experiment, method, seed, "best"))
     env = ChainEnv(exp.method_env(method))
-    seen = set(rollouts(agent, env, CURVE_STREAM, seed, settings["train_like"], REFERENCE_EPISODES)[0])
+    seen = set(rollouts(agent, env, CURVE_STREAM, seed, settings["train_like"], REFERENCE_EPISODES).key)
     rows = []
     for setting in ("train_like", "heldout_long", "heldout_xlong"):
-        keys, uncued, whole = rollouts(agent, env, EVAL_STREAM, seed, settings[setting], EPISODES)
-        novel = np.array([k not in seen for k in keys])
-        checks = np.array([np.nan if u is None else float(u) for u in uncued])
+        points = rollouts(agent, env, EVAL_STREAM, seed, settings[setting], EPISODES)
+        points["unseen"] = [key not in seen for key in points.key]  # not Series.isin, which mishandles these bytes
+        zero = points[points.broke]
         rows.append(
             {
                 "experiment": experiment,
                 "method": name,
                 "seed": seed,
                 "setting": setting,
-                "points": len(keys),
-                "unseen_fraction": float(novel.mean()),
-                "uncued_check_seen": float(np.nanmean(checks[~novel]))
-                if (~novel & ~np.isnan(checks)).any()
-                else np.nan,
-                "uncued_check_unseen": float(np.nanmean(checks[novel]))
-                if (novel & ~np.isnan(checks)).any()
-                else np.nan,
-                "uncued_points_unseen": int((novel & ~np.isnan(checks)).sum()),
-                "whole_episode_in_window": float(np.mean(whole)),
+                "points": len(points),
+                "unseen_fraction": float(points.unseen.mean()),
+                "zero_slack_points": len(zero),
+                "zero_slack_unseen": _rate(zero.unseen),
+                "zero_slack_spend": _rate(zero.spend),
+                "zero_slack_spend_seen": _rate(zero.spend[~zero.unseen]),
+                "zero_slack_spend_unseen": _rate(zero.spend[zero.unseen]),
+                "slack_spent_seen": float(points.cost[~points.unseen].sum() / EPISODES),
+                "slack_spent_unseen": float(points.cost[points.unseen].sum() / EPISODES),
+                "uncued_check_early": _rate(points.verify[points.uncued & points.early]),
+                "whole_episode_in_window": float(points.whole.mean()),
             }
         )
     return rows

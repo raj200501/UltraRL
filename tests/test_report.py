@@ -73,7 +73,10 @@ def generated(tmp_path_factory):
     pd.DataFrame(
         [
             {"method": "ma_history", "seed": seed, "setting": "heldout_xlong", "unseen_fraction": 0.3,
-             "uncued_check_seen": 0.6, "uncued_check_unseen": np.nan if seed else 0.1, "whole_episode_in_window": 0.5}
+             "zero_slack_unseen": 0.8, "zero_slack_spend": 0.1, "zero_slack_spend_seen": 0.0,
+             "zero_slack_spend_unseen": np.nan if seed else 0.1, "uncued_check_early": 0.5,
+             "slack_spent_seen": 4.0, "slack_spent_unseen": 2.0,
+             "whole_episode_in_window": 0.5}
             for seed in range(3)
         ]
     ).to_csv(tmp / "results" / "agent_coverage.csv", index=False)  # fmt: skip
@@ -119,7 +122,9 @@ def test_report_writes_every_figure_and_table(generated):
         "pilot_results",
         "probe_results",
         "pending_results",
+        "pending_collapse",
         "process_results",
+        "process_collapse",
         "followup_results",
         "encoder_results",
     ):

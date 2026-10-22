@@ -47,6 +47,16 @@ methods:
     display_name: "step bonus 0.1 only"
     env_overrides: {reward_scheme: naive_process, observation: invariant, naive_verify_bonus: 0.0,
                     naive_progress_bonus: 0.1}
+  # The step bonus is paid again when a correct step is undone and redone; at 0.1 that
+  # loop has positive reward (0.1 > 2 x 0.04). These pay it once per step instead.
+  - name: naive_step05_once
+    display_name: "step bonus 0.05, once per step"
+    env_overrides: {reward_scheme: naive_process, observation: invariant, naive_verify_bonus: 0.0,
+                    naive_progress_bonus: 0.05, naive_progress_once: true}
+  - name: naive_step10_once
+    display_name: "step bonus 0.1, once per step"
+    env_overrides: {reward_scheme: naive_process, observation: invariant, naive_verify_bonus: 0.0,
+                    naive_progress_bonus: 0.1, naive_progress_once: true}
 
 evaluation:
   episodes: 500

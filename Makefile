@@ -2,7 +2,7 @@ PYTHON ?= python
 WORKERS ?= 4
 EXPERIMENTS := main ablations sensitivity followups encoders process
 
-.PHONY: install test lint smoke analyses report paper experiments reproduce equivalence clean $(EXPERIMENTS)
+.PHONY: install test lint smoke analyses report paper experiments reproduce spot-check equivalence clean $(EXPERIMENTS)
 
 install:  ## editable install with dev tools (CPU torch is enough)
 	$(PYTHON) -m pip install -e ".[dev]"
@@ -21,6 +21,7 @@ smoke:  ## ~30 s end-to-end run of the whole pipeline in a scratch directory
 analyses:  ## observation coverage (hand-coded and agents' own rollouts) and the value probe, from saved checkpoints (~20 min)
 	$(PYTHON) scripts/observation_coverage.py
 	$(PYTHON) scripts/agent_coverage.py
+	$(PYTHON) scripts/inspect_low_detection.py
 	$(PYTHON) scripts/q_probe.py
 
 report:  ## every figure, table and number in the paper, from the saved results (no training)
@@ -44,6 +45,9 @@ reproduce:
 	  $(PYTHON) -m ultrarl.run --config configs/$$exp.yaml --out results_repro/$$exp --workers $(WORKERS) || exit 1; \
 	  $(PYTHON) scripts/compare_checkpoints.py results/$$exp results_repro/$$exp || exit 1; \
 	done
+
+spot-check:  ## retrain one run per experiment and compare it bitwise with the saved one (~5 min)
+	$(PYTHON) scripts/spot_check.py
 
 equivalence:  ## rewritten environment vs. the original implementation, step by step
 	$(PYTHON) scripts/check_legacy_equivalence.py

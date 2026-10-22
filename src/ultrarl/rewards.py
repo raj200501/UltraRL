@@ -12,7 +12,11 @@ and differ only in the per-step *process* term added on top:
 ``naive_process``
     +naive_progress_bonus for a THINK that leaves the running value correct, and
     +naive_verify_bonus for any first-time informative verification. Note that the
-    progress bonus uses the *hidden* correctness of the running value.
+    progress bonus uses the *hidden* correctness of the running value, and that it
+    is paid again when a correct step is undone and redone: once the bonus exceeds
+    the cost of a REVISE and a THINK, that loop has positive reward. With
+    ``naive_progress_once`` it is paid only for the first correct execution of
+    each step (a repair still earns it).
 ``monitorability_aware``
     rewards informative verification and penalises unverified stretches:
 
@@ -54,6 +58,7 @@ class StepEvent:
     cost: int
     success: bool = False
     think_valid: bool = False
+    first_correct: bool = False  # THINK executed this step correctly for the first time in the episode
     verify_first: bool = False
     verify_unsafe: bool = False
     belief_valid: bool = False
@@ -92,7 +97,7 @@ def process_reward(cfg: EnvConfig, event: StepEvent) -> float:
         return 0.0
     if scheme == "naive_process":
         reward = 0.0
-        if event.action == "THINK" and event.think_valid:
+        if event.action == "THINK" and event.think_valid and (event.first_correct or not cfg.naive_progress_once):
             reward += cfg.naive_progress_bonus
         if event.informative_verify:
             reward += cfg.naive_verify_bonus

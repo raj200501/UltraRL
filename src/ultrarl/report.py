@@ -356,6 +356,8 @@ def curve_stats(
             out[f"{prefix}/{method}/{key[name]}/hi"] = min(1.0, high)
         jumps = sub.sort_values("episode").groupby("seed").train_like_success.apply(lambda x: x.diff().abs().mean())
         out[f"{prefix}/{method}/mean_abs_change"] = float(jumps.mean())
+        high_rate = sub.groupby("seed").train_like_success.apply(lambda x: float((x >= 0.8).mean()))
+        out[f"{prefix}/{method}/late_high_rate"] = float(high_rate.mean())
         late_success = sub.groupby("seed").train_like_success.mean().to_numpy(dtype=float)
         low, high = t_interval(late_success)
         out[f"{prefix}/{method}/late_success"] = float(late_success.mean())
@@ -381,21 +383,44 @@ def curve_stats(
     return out
 
 
+CURVE_METRICS = ("late_success", "late_collapse_rate", "first_above_half")
+
+
 def curve_comparisons(curves: pd.DataFrame, pairs: list[tuple[str, str]], burn_in: int = BURN_IN) -> pd.DataFrame:
-    """Paired (by seed) differences in two learning-curve statistics: mean training-length
-    success of the late checkpoints, and the episode at which success first exceeds 0.5
-    (seeds that never exceed it are dropped from that comparison)."""
-    late = curves[curves.episode > burn_in].groupby(["method", "seed"]).train_like_success.mean()
+    """Paired (by seed) differences in learning-curve statistics: mean training-length success
+    of the late checkpoints, the fraction of them that collapsed, and the episode at which
+    success first exceeds 0.5 (seeds that never exceed it are dropped from that comparison)."""
+    late = curves[curves.episode > burn_in].groupby(["method", "seed"]).train_like_success
     first = curves[curves.train_like_success > 0.5].groupby(["method", "seed"]).episode.min()
-    frame = pd.concat([late.rename("late_success"), first.rename("first_above_half")], axis=1).reset_index()
+    collapsed = late.apply(lambda x: float((x <= COLLAPSE_THRESHOLD).mean()))
+    frame = pd.concat(
+        [late.mean().rename("late_success"), collapsed.rename("late_collapse_rate"), first.rename("first_above_half")],
+        axis=1,
+    ).reset_index()
     frame = frame.assign(setting="train_like")
     rows = [
         {"a": a, "b": b, "setting": "train_like", "metric": metric,
          **paired_difference(frame, metric, a, b, "train_like")}
         for a, b in pairs
-        for metric in ("late_success", "first_above_half")
+        for metric in CURVE_METRICS
     ]  # fmt: skip
     return pd.DataFrame(rows)
+
+
+def extreme_macros(stats: dict[str, float | str], keys: dict[str, str], name: str) -> dict[str, float | str]:
+    """The smallest and largest of the named results (label -> result key), so that 'at most'
+    and 'between' statements are computed rather than picked by hand. ``name`` must end in
+    ``_rate`` for percentage versions to be written."""
+    head, _, tail = name.rpartition("/")
+    values = {label: stats[key] for label, key in keys.items() if key in stats}
+    out: dict[str, float | str] = {}
+    for which, pick in (("min", min), ("max", max)):
+        label = pick(values, key=values.get)
+        out[f"{head}/{which}/{tail}"] = values[label]
+        for suffix in ("/lo", "/hi", "/p", "/npos"):  # interval and test of a paired difference
+            if keys[label] + suffix in stats:
+                out[f"{head}/{which}/{tail}{suffix}"] = stats[keys[label] + suffix]
+    return out
 
 
 def unrepaired_loss_macros(per_seed: pd.DataFrame, prefix: str) -> dict[str, float]:
@@ -440,6 +465,8 @@ def selection_macros(train_runs: pd.DataFrame, prefix: str) -> dict[str, str]:
         out[f"{prefix}/{method}/selected_early"] = str(int((sub.selected_episode <= BURN_IN).sum()))
         if "selection_success" in sub:
             out[f"{prefix}/{method}/selection_success_median"] = f"{sub.selection_success.median():.2f}"
+        if "parameter_count" in sub:
+            out[f"{prefix}/{method}/parameters"] = f"{int(sub.parameter_count.iloc[0]):,}"
     return out
 
 
@@ -593,7 +620,7 @@ def table_pending(main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict
     """Each reward with the invariant observation, with the repair-pending bit added, and with
     the last few actions added instead (if those runs exist)."""
     combined = pd.concat([main_summary, summary], ignore_index=True)
-    rows = []
+    rows, stability = [], []
     variants = [
         ("inv", "main", ""),
         ("pending", "followups", " + pending bit"),
@@ -608,10 +635,11 @@ def table_pending(main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict
             pct = [f"{100 * stats[f'{prefix}/{m}/{k}']:.0f}\\%" for k in ("collapse_rate", "collapse_norepair_rate",
                                                                           "collapse_lowdetect_rate")]  # fmt: skip
             pct.append(f"{stats[f'{prefix}/{m}/late_success']:.2f}")
+            label = SCHEME_LABEL[scheme] + suffix
+            stability.append([label, *pct])
             rows.append(
                 [
-                    SCHEME_LABEL[scheme] + suffix,
-                    *pct,
+                    label,
                     fmt(row(combined, "train_like", m), "success"),
                     fmt(row(combined, "heldout_long", m), "success"),
                     fmt(row(combined, "heldout_xlong", m), "success"),
@@ -619,46 +647,57 @@ def table_pending(main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict
                     fmt(row(combined, "heldout_xlong", m + FINAL), "success"),
                 ]
             )
-    header = ["Reward and observation", "Collapsed", "no repair", "low detection", "Late success", "Success 3--6",
-              "Success 7--9", "Success 10--14", "Last ckpt.\\ 7--9", "Last ckpt.\\ 10--14"]  # fmt: skip
-    (out / "pending_results.tex").write_text(latex_table(header, rows, "lccccccccc"), encoding="utf-8")
+    header = ["Reward and observation", "Collapsed", "no repair", "low detection", "Late success"]
+    (out / "pending_collapse.tex").write_text(latex_table(header, stability, "lcccc"), encoding="utf-8")
+    header = ["Reward and observation", "Success 3--6", "Success 7--9", "Success 10--14", "Last ckpt.\\ 7--9",
+              "Last ckpt.\\ 10--14"]  # fmt: skip
+    (out / "pending_results.tex").write_text(latex_table(header, rows, "lccccc"), encoding="utf-8")
 
 
-PROCESS_ROWS = [
-    ("main", "outcome_inv", "Outcome-only", "--", "--"),
-    ("main", "naive_inv", "Naive process (main experiment)", "0.015", "0.02"),
-    ("process", "naive_check_only", "Check payment only", "0", "0.02"),
-    ("process", "naive_step015", "Step bonus only", "0.015", "0"),
-    ("process", "naive_step05", "Larger step bonus", "0.05", "0"),
-    ("process", "naive_step10", "Largest step bonus", "0.1", "0"),
-]
-
-
-def table_process(main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict[str, float | str], out: Path) -> None:
+def table_process(
+    main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict[str, float | str], configs: dict, out: Path
+) -> None:
     """The naive process reward with its step-correctness and check terms separated and the
-    step bonus scaled up, next to the main experiment's outcome-only and naive agents."""
+    step bonus scaled up, next to the main experiment's outcome-only and naive agents. The
+    coefficients are read from the saved configs (``configs``: experiment name -> config)."""
     combined = pd.concat([main_summary, summary], ignore_index=True)
-    rows = []
-    for prefix, m, text, step, check in PROCESS_ROWS:
+    main_methods = {m.name: m for m in configs["main"].methods}
+    entries = [("main", main_methods["outcome_inv"], "Outcome-only"),
+               ("main", main_methods["naive_inv"], "Naive process (main experiment)")]  # fmt: skip
+    entries += [("process", m, m.display_name[0].upper() + m.display_name[1:]) for m in configs["process"].methods]
+    rows, stability = [], []
+    for prefix, method, text in entries:
+        m = method.name
         if m not in set(combined.method):
             continue
+        env = configs[prefix].method_env(method)
+        naive = env.reward_scheme == "naive_process"
+        step = f"{env.naive_progress_bonus:g}" + (" (once)" if naive and env.naive_progress_once else "")
         pct = [f"{100 * stats[f'{prefix}/{m}/{k}']:.0f}\\%" for k in ("collapse_rate", "collapse_lowdetect_rate")]
+        stability.append(
+            [
+                text,
+                step if naive else "--",
+                f"{env.naive_verify_bonus:g}" if naive else "--",
+                *pct,
+                f"{stats[f'{prefix}/{m}/late_success']:.2f}",
+                f"{row(combined, 'heldout_xlong', m + FINAL)['nonrepair_revise_count']:.2f}",
+            ]
+        )
         rows.append(
             [
                 text,
-                step,
-                check,
-                *pct,
-                f"{stats[f'{prefix}/{m}/late_success']:.2f}",
                 fmt(row(combined, "train_like", m), "success"),
                 fmt(row(combined, "heldout_long", m), "success"),
                 fmt(row(combined, "heldout_xlong", m), "success"),
                 fmt(row(combined, "heldout_long", m + FINAL), "success"),
             ]
         )
-    header = ["Reward", "Per correct step", "Per informative check", "Collapsed", "low detection",
-              "Late success", "Success 3--6", "Success 7--9", "Success 10--14", "Last ckpt.\\ 7--9"]  # fmt: skip
-    (out / "process_results.tex").write_text(latex_table(header, rows, "lccccccccc"), encoding="utf-8")
+    header = ["Reward", "Per correct step", "Per informative check", "Collapsed", "low detection", "Late success",
+              "Wasted REVISE"]  # fmt: skip
+    (out / "process_collapse.tex").write_text(latex_table(header, stability, "lcccccc"), encoding="utf-8")
+    header = ["Reward", "Success 3--6", "Success 7--9", "Success 10--14", "Last ckpt.\\ 7--9"]
+    (out / "process_results.tex").write_text(latex_table(header, rows, "lcccc"), encoding="utf-8")
 
 
 def table_encoders(
@@ -837,8 +876,13 @@ def success_range(summary: pd.DataFrame, key: str, pairs: list[tuple[str, str]])
 # columns of results/agent_coverage.csv -> macro names (rates, so that /pct versions exist)
 AGENT_COVERAGE = {
     "unseen_fraction": "unseen_rate",
-    "uncued_check_seen": "uncued_seen_rate",
-    "uncued_check_unseen": "uncued_unseen_rate",
+    "zero_slack_unseen": "zero_slack_unseen_rate",
+    "zero_slack_spend": "zero_slack_spend_rate",
+    "zero_slack_spend_seen": "zero_slack_spend_seen_rate",
+    "zero_slack_spend_unseen": "zero_slack_spend_unseen_rate",
+    "uncued_check_early": "uncued_early_rate",
+    "slack_spent_seen": "slack_spent_seen",
+    "slack_spent_unseen": "slack_spent_unseen",
     "whole_episode_in_window": "whole_window_rate",
 }
 
@@ -1008,6 +1052,12 @@ def main(argv: list[str] | None = None) -> None:
     if coverage_path.exists():
         for _, c in pd.read_csv(coverage_path).iterrows():
             extras[f"coverage/{c['observation']}/{c['setting']}/unseen_rate"] = c["unseen_fraction"]
+    inspection = results / "low_detection_inspection.csv"
+    if inspection.exists():
+        low = pd.read_csv(inspection)
+        extras.update({"lowdet/n_seeds": str(len(low)), "lowdet/checks_min": str(int(low.checks_min.min())),
+                       "lowdet/checks_max": str(int(low.checks_max.max())),
+                       "lowdet/final_step_share_rate": float(low.final_step_share.min())})  # fmt: skip
     agent_coverage = results / "agent_coverage.csv"
     if agent_coverage.exists():
         means = pd.read_csv(agent_coverage).groupby(["method", "setting"]).mean(numeric_only=True)
@@ -1030,7 +1080,10 @@ def main(argv: list[str] | None = None) -> None:
         pairs += [(m + FINAL, m.replace("_pending", "_inv") + FINAL, s) for m in pending for s in LENGTHS]
         if {"ma_pending", "outcome_pending"} <= set(pending):
             pairs += [(f"ma_pending{x}", f"outcome_pending{x}", s) for x in ("", FINAL) for s in LENGTHS]
-        pairs += [(f"{m}{FINAL}", "cue_triggered", s) for m in pending for s in ("heldout_long", "heldout_xlong")]
+        windows = [m for m in followup_methods if m.endswith("_history3")]
+        pairs += [
+            (f"{m}{FINAL}", "cue_triggered", s) for m in pending + windows for s in ("heldout_long", "heldout_xlong")
+        ]
         pairs += [(f"{m}{FINAL}", m, s) for m in pending for s in LENGTHS]
         for window in ("_history", "_history3"):
             history = [m for m in followup_methods if m.endswith(window)]
@@ -1044,6 +1097,13 @@ def main(argv: list[str] | None = None) -> None:
         curve_pairs = [(f"ma_{o}", f"outcome_{o}") for o in observations
                        if {f"ma_{o}", f"outcome_{o}"} <= set(followup_methods)]  # fmt: skip
         extras.update(comparison_macros(curve_comparisons(load_curves(followup_dir), curve_pairs)))
+        # the same gap as a ratio of late failure rates (1 - late success), which is not compressed near the ceiling
+        for obs, prefix in (("inv", "main"), *((o, "followups") for o in observations)):
+            if f"{prefix}/ma_{obs}/late_success" in extras:
+                failure = {s: 1 - extras[f"{prefix}/{s}_{obs}/late_success"] for s in ("outcome", "ma")}
+                extras[f"ratio/{obs}/late_failure"] = failure["outcome"] / failure["ma"]
+        ratios = {k: k for k in extras if k.startswith("ratio/") and k.endswith("/late_failure")}
+        extras.update(extreme_macros(extras, ratios, "extremes/ratios/late_failure"))
         histories = [(m, "train_like") for m in followup_methods if m.endswith(("_history", "_history3"))]
         if histories:
             extras.update(success_range(summaries["followups"], "followups/histories/train_like", histories))
@@ -1057,14 +1117,33 @@ def main(argv: list[str] | None = None) -> None:
         extras.update(curve_stats(process_curves, process_seeds, prefix="process"))
         joint = pd.concat([per_seed, process_seeds], ignore_index=True)
         variants = [m for m in summaries["process"].method.unique() if not m.endswith(FINAL)]
-        pairs = [(m + x, ref + x, s) for m in variants for ref in ("outcome_inv", "naive_inv")
-                 for x in ("", FINAL) for s in LENGTHS]  # fmt: skip
+        pairs = [(m + x, "outcome_inv" + x, s) for m in variants for x in ("", FINAL) for s in LENGTHS]
+        pairs += [(ref + x, m + x, s) for m in variants for ref in ("naive_inv", "ma_inv")
+                  for x in ("", FINAL) for s in LENGTHS]  # fmt: skip
         extras.update(comparison_macros(key_numbers(joint, pairs)))
         both = pd.concat([curves, process_curves], ignore_index=True)  # same seeds as the main experiment
-        extras.update(comparison_macros(curve_comparisons(both, [(m, "outcome_inv") for m in variants])))
+        curve_pairs = [(m, "outcome_inv") for m in variants] + [("ma_inv", m) for m in variants]
+        curve_pairs += [(m, m.removesuffix("_once")) for m in variants if m.endswith("_once")]
+        extras.update(comparison_macros(curve_comparisons(both, curve_pairs)))
+        pairs = [(m, m.removesuffix("_once"), s) for m in variants if m.endswith("_once") for s in LENGTHS]
+        extras.update(comparison_macros(key_numbers(joint, pairs)))
+        largest = {f"{m} {s}": f"diff/{m}-outcome_inv/{s}/success" for m in variants for s in LENGTHS}
+        extras.update(extreme_macros(extras, largest, "extremes/process_vs_outcome/success"))
+        ma_gap = {f"{m} {s}": f"diff/ma_inv-{m}/{s}/success" for m in variants for s in LENGTHS}
+        extras.update(extreme_macros(extras, ma_gap, "extremes/ma_vs_process/success"))
+        extras["extremes/ma_vs_process/resolved"] = str(sum(extras[f"{k}/lo"] > 0 for k in ma_gap.values()))
+        extras["extremes/ma_vs_process/total"] = str(len(ma_gap))
         extras.update(success_range(summaries["process"], "process/variants/train_like",
                                     [(m, "train_like") for m in variants]))  # fmt: skip
-        table_process(summary, summaries["process"], extras, tables)
+        configs = {name: load_experiment(results / name / "config.yaml") for name in ("main", "process")}
+        table_process(summary, summaries["process"], extras, configs, tables)
+    if {"ablations", "followups"} <= set(summaries):
+        # check-paying variants (the variant without REVISE cannot repair, so it is not one)
+        paying = {m: f"ablations/{m}/collapse_lowdetect_rate" for m in CHECK_PAYING}
+        paying.update({m: f"followups/{m}/collapse_lowdetect_rate" for m in followup_methods if m.startswith("ma_")})
+        extras.update(extreme_macros(extras, paying, "extremes/check_paying/collapse_lowdetect_rate"))
+    rewards = {s: f"main/{s}_inv/collapse_norepair_rate" for s in SCHEMES}
+    extras.update(extreme_macros(extras, rewards, "extremes/main_inv/collapse_norepair_rate"))
     encoder_dir = results / "encoders"
     if (encoder_dir / "eval_summary.csv").exists():
         summaries["encoders"] = pd.read_csv(encoder_dir / "eval_summary.csv")

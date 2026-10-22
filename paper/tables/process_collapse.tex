@@ -1,0 +1,14 @@
+\begin{tabular}{lcccccc}
+\toprule
+Reward & Per correct step & Per informative check & Collapsed & low detection & Late success & Wasted REVISE \\
+\midrule
+Outcome-only & -- & -- & 85\% & 60\% & 0.32 & 1.20 \\
+Naive process (main experiment) & 0.015 & 0.02 & 62\% & 17\% & 0.43 & 0.86 \\
+Check payment 0.02 only & 0 & 0.02 & 87\% & 49\% & 0.29 & 0.93 \\
+Step bonus 0.015 only & 0.015 & 0 & 67\% & 33\% & 0.39 & 1.18 \\
+Step bonus 0.05 only & 0.05 & 0 & 51\% & 20\% & 0.46 & 1.38 \\
+Step bonus 0.1 only & 0.1 & 0 & 28\% & 8\% & 0.53 & 1.64 \\
+Step bonus 0.05, once per step & 0.05 (once) & 0 & 53\% & 12\% & 0.46 & 1.30 \\
+Step bonus 0.1, once per step & 0.1 (once) & 0 & 36\% & 8\% & 0.52 & 0.85 \\
+\bottomrule
+\end{tabular}

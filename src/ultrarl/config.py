@@ -39,6 +39,7 @@ class EnvConfig:
     # Naive process reward
     naive_progress_bonus: float = 0.015
     naive_verify_bonus: float = 0.02
+    naive_progress_once: bool = False  # pay the step bonus only for each step's first correct execution
     # Monitorability-aware process reward
     ma_safe_verify_bonus: float = 0.02
     ma_fault_verify_bonus: float = 0.25

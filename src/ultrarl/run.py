@@ -237,14 +237,19 @@ def _check_output_dir(out: Path, config_path: str, smoke: bool) -> None:
 
 def platform_info() -> dict[str, str]:
     """Software and hardware that bitwise reproduction depends on (CPU kernels differ by instruction set)."""
+    import re
+
     import numpy
 
+    blas = re.search(r"BLAS_INFO=(\w+)", torch.__config__.show())
     return {
         "python": platform.python_version(),
         "torch": torch.__version__,
         "numpy": numpy.__version__,
         "platform": platform.platform(),
         "cpu_capability": torch.backends.cpu.get_cpu_capability(),
+        "blas": blas.group(1) if blas else "unknown",
+        "mkl": str(torch.backends.mkl.is_available()),
     }
 
 

@@ -75,16 +75,17 @@ def test_observation_coverage_ranks_the_encoders():
     assert unseen["absolute"] > 0.9 > 0.3 > unseen["invariant"]
 
 
-def test_agent_coverage_rollouts_mark_uncued_check_opportunities():
+def test_agent_coverage_rollouts_flag_uncued_and_unaffordable_points():
     coverage = _load("agent_coverage")
     from ultrarl.config import EvalSetting
 
     env = ChainEnv(EnvConfig(observation="invariant"))
-    keys, uncued, whole = coverage.rollouts(ScriptedAgent(), env, 0, 0, EvalSetting("train_like", (3, 6)), 20)
-    assert len(keys) == len(uncued) == len(whole) > 20
-    assert whole[0] and not all(whole)  # the episode outgrows an 8-action window when checking every step
-    opportunities = [u for u in uncued if u is not None]
-    assert opportunities and all(opportunities)  # the scripted agent checks every new step
+    points = coverage.rollouts(ScriptedAgent(), env, 0, 0, EvalSetting("train_like", (3, 6)), 20)
+    assert len(points) > 20 and points.whole.iloc[0] and not points.whole.all()
+    assert points.verify[points.uncued].all()  # the scripted agent checks every new step
+    tight = coverage.rollouts(ScriptedAgent(), ChainEnv(EnvConfig(observation="invariant", budget_extra=2)), 0, 0,
+                              EvalSetting("train_like", (3, 6)), 20)  # fmt: skip
+    assert tight.broke.any() and tight.spend[tight.broke].any()  # it keeps checking with no slack left
 
 
 def _save_agent(path, seed, episode=1000):
@@ -108,16 +109,45 @@ def test_compare_checkpoints_reports_identical_differing_and_missing(tmp_path, c
     assert "differs: a.pt" in out and "missing: b.pt" in out and "this platform" in out
 
 
-def test_compare_summaries_flags_a_shifted_method(tmp_path, capsys):
+def test_compare_summaries_reports_paired_shifts_and_headline_comparisons(tmp_path, capsys):
+    from ultrarl.report import PRIMARY
+
     compare = _load("compare_summaries")
     rng = np.random.default_rng(0)
-    for name, shift in (("ref", 0.0), ("new", 0.3)):
+    base = {"ma_inv": 0.8, "ma_abs": 0.5, "outcome_inv": 0.6, "outcome_abs": 0.3, "cue_triggered": 0.85}
+    assert {m for a, b, _ in PRIMARY for m in (a, b)} <= set(base)
+    for name, shift in (("ref", 0.0), ("new", 0.4)):  # the retrained ma_abs is 0.4 better: it now beats ma_inv
         (tmp_path / name).mkdir()
-        rows = [{"setting": "train_like", "method": m, "seed": k, "success": rng.uniform(0.4, 0.5) + shift * (m == "b")}
-                for m in ("a", "b", "cue_triggered") for k in range(10)]  # fmt: skip
+        rows = [{"setting": s, "method": m, "seed": k, "success": v + shift * (m == "ma_abs") + rng.normal(0, 0.01)}
+                for m, v in base.items() for s in compare.LENGTHS for k in range(10)]  # fmt: skip
         pd.DataFrame(rows).to_csv(tmp_path / name / "eval_per_seed.csv", index=False)
-        pd.DataFrame({"method": ["a", "b"]}).to_csv(tmp_path / name / "train_runs.csv", index=False)
-    frame = compare.compare(tmp_path / "ref", tmp_path / "new").set_index("method")
-    assert set(frame.index) == {"a", "b"} and frame.loc["b", "p"] < 0.001 < frame.loc["a", "p"]
+        pd.DataFrame({"method": [m for m in base if m != "cue_triggered"]}).to_csv(
+            tmp_path / name / "train_runs.csv", index=False
+        )
+    frame = compare.differences(tmp_path / "ref", tmp_path / "new").set_index(["method", "setting"])
+    assert "cue_triggered" not in frame.index.get_level_values(0)  # hand-coded policies are not retrained
+    assert frame.loc[("ma_abs", "train_like"), "lo"] > 0.3 and frame.loc[("ma_inv", "train_like"), "hi"] < 0.05
+    head = compare.headline(tmp_path / "ref", tmp_path / "new").set_index(["a", "b", "setting"])
+    assert not head.loc[("ma_inv", "ma_abs", "heldout_long"), "same_sign"]
+    assert head.loc[("ma_inv", "outcome_inv", "train_like"), "same_sign"]
     assert compare.main(str(tmp_path / "ref"), str(tmp_path / "new")) == 0
-    assert "1 of 2 rows differ" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "intervals exclude zero" in out and "4 of 6 headline comparisons keep their sign" in out
+
+
+def test_low_detection_inspection_counts_checks_and_their_positions():
+    inspect = _load("inspect_low_detection")
+    inspect.EPISODES = 20
+    stats = inspect.inspect(ScriptedAgent(), ChainEnv(EnvConfig(observation="invariant")), 0, (3, 6))
+    assert stats["checks_min"] >= 1 and stats["checks_mean"] <= stats["checks_max"]
+    assert 0 < stats["final_step_share"] < 1  # it checks every step, not only the last
+    assert stats["check_rate_cue0"] == stats["check_rate_cue1"] == 1.0
+
+
+def test_agent_coverage_finds_training_length_observations_familiar():
+    # regression: pandas' Series.isin mishandles these bytes keys and reported almost everything unseen
+    coverage = _load("agent_coverage")
+    coverage.REFERENCE_EPISODES, coverage.EPISODES = 300, 50
+    rows = {r["setting"]: r for r in coverage.job(("main", "ma_inv", 0))}
+    assert rows["train_like"]["unseen_fraction"] < 0.1
+    assert rows["heldout_xlong"]["unseen_fraction"] < 0.2

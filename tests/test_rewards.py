@@ -45,6 +45,21 @@ def test_naive_process_rewards_hidden_progress():
     assert rs[2] == pytest.approx(cfg.naive_verify_bonus)  # catching the fault
 
 
+def test_step_bonus_is_repaid_on_redo_unless_paid_once_per_step():
+    base = dict(reward_scheme="naive_process", naive_verify_bonus=0.0, naive_progress_bonus=0.1)
+    # undoing and redoing a correct step: paid again by default, a net gain once the bonus exceeds the costs
+    repeat = rewards_for(EnvConfig(**base), [T, R, T], depth=3, fault=2)
+    cfg = EnvConfig(**base)
+    assert repeat[2] == pytest.approx(cfg.naive_progress_bonus - cfg.step_penalty)
+    assert repeat[1] + repeat[2] > 0  # the undo/redo loop has positive reward at this bonus
+    once = rewards_for(EnvConfig(**base, naive_progress_once=True), [T, R, T], depth=3, fault=2)
+    assert once[2] == pytest.approx(-cfg.step_penalty)
+    # a genuine repair is still the step's first correct execution, so it is paid
+    repair = rewards_for(EnvConfig(**base, naive_progress_once=True), [T, T, V, R, T], depth=3, fault=1)
+    assert repair[1] == pytest.approx(-cfg.step_penalty)  # the faulty execution earns nothing
+    assert repair[4] == pytest.approx(cfg.naive_progress_bonus - cfg.step_penalty)
+
+
 def test_monitorability_terms():
     cfg = EnvConfig(reward_scheme="monitorability_aware", budget_penalty=False)
     d = 3

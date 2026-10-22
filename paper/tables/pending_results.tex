@@ -1,18 +1,18 @@
-\begin{tabular}{lccccccccc}
+\begin{tabular}{lccccc}
 \toprule
-Reward and observation & Collapsed & no repair & low detection & Late success & Success 3--6 & Success 7--9 & Success 10--14 & Last ckpt.\ 7--9 & Last ckpt.\ 10--14 \\
+Reward and observation & Success 3--6 & Success 7--9 & Success 10--14 & Last ckpt.\ 7--9 & Last ckpt.\ 10--14 \\
 \midrule
-Outcome-only & 85\% & 15\% & 60\% & 0.32 & 0.72\,{\scriptsize[0.64, 0.81]} & 0.62\,{\scriptsize[0.48, 0.75]} & 0.52\,{\scriptsize[0.36, 0.67]} & 0.33\,{\scriptsize[0.21, 0.46]} & 0.30\,{\scriptsize[0.19, 0.41]} \\
-Outcome-only + pending bit & 20\% & 0\% & 15\% & 0.63 & 0.90\,{\scriptsize[0.89, 0.92]} & 0.79\,{\scriptsize[0.71, 0.87]} & 0.66\,{\scriptsize[0.53, 0.78]} & 0.37\,{\scriptsize[0.28, 0.46]} & 0.27\,{\scriptsize[0.22, 0.33]} \\
-Outcome-only + last 8 actions & 0\% & 0\% & 0\% & 0.92 & 0.97\,{\scriptsize[0.97, 0.97]} & 0.69\,{\scriptsize[0.65, 0.74]} & 0.22\,{\scriptsize[0.15, 0.29]} & 0.69\,{\scriptsize[0.60, 0.79]} & 0.29\,{\scriptsize[0.19, 0.39]} \\
-Outcome-only + last 3 actions & 0\% & 0\% & 0\% & 0.81 & 0.95\,{\scriptsize[0.93, 0.97]} & 0.80\,{\scriptsize[0.75, 0.85]} & 0.56\,{\scriptsize[0.45, 0.68]} & 0.68\,{\scriptsize[0.56, 0.80]} & 0.50\,{\scriptsize[0.41, 0.59]} \\
-Naive process & 62\% & 29\% & 17\% & 0.43 & 0.85\,{\scriptsize[0.80, 0.91]} & 0.76\,{\scriptsize[0.64, 0.87]} & 0.65\,{\scriptsize[0.52, 0.78]} & 0.36\,{\scriptsize[0.21, 0.51]} & 0.31\,{\scriptsize[0.20, 0.43]} \\
-Naive process + pending bit & 15\% & 0\% & 7\% & 0.69 & 0.92\,{\scriptsize[0.91, 0.93]} & 0.75\,{\scriptsize[0.65, 0.84]} & 0.55\,{\scriptsize[0.44, 0.66]} & 0.39\,{\scriptsize[0.33, 0.46]} & 0.30\,{\scriptsize[0.26, 0.34]} \\
-Naive process + last 8 actions & 0\% & 0\% & 0\% & 0.93 & 0.97\,{\scriptsize[0.96, 0.97]} & 0.70\,{\scriptsize[0.67, 0.73]} & 0.29\,{\scriptsize[0.19, 0.38]} & 0.74\,{\scriptsize[0.70, 0.78]} & 0.36\,{\scriptsize[0.27, 0.44]} \\
-Naive process + last 3 actions & 2\% & 0\% & 2\% & 0.85 & 0.97\,{\scriptsize[0.96, 0.98]} & 0.78\,{\scriptsize[0.73, 0.82]} & 0.50\,{\scriptsize[0.38, 0.61]} & 0.73\,{\scriptsize[0.61, 0.85]} & 0.54\,{\scriptsize[0.36, 0.71]} \\
-Monitorability-aware & 21\% & 21\% & 0\% & 0.63 & 0.91\,{\scriptsize[0.89, 0.92]} & 0.86\,{\scriptsize[0.83, 0.89]} & 0.74\,{\scriptsize[0.68, 0.80]} & 0.63\,{\scriptsize[0.51, 0.76]} & 0.52\,{\scriptsize[0.41, 0.64]} \\
-Monitorability-aware + pending bit & 0\% & 0\% & 0\% & 0.93 & 0.95\,{\scriptsize[0.94, 0.95]} & 0.83\,{\scriptsize[0.76, 0.91]} & 0.60\,{\scriptsize[0.45, 0.75]} & 0.89\,{\scriptsize[0.87, 0.91]} & 0.83\,{\scriptsize[0.76, 0.89]} \\
-Monitorability-aware + last 8 actions & 0\% & 0\% & 0\% & 0.95 & 0.97\,{\scriptsize[0.96, 0.98]} & 0.78\,{\scriptsize[0.74, 0.81]} & 0.41\,{\scriptsize[0.30, 0.51]} & 0.75\,{\scriptsize[0.69, 0.81]} & 0.45\,{\scriptsize[0.38, 0.52]} \\
-Monitorability-aware + last 3 actions & 0\% & 0\% & 0\% & 0.94 & 0.96\,{\scriptsize[0.96, 0.97]} & 0.85\,{\scriptsize[0.80, 0.90]} & 0.66\,{\scriptsize[0.58, 0.75]} & 0.91\,{\scriptsize[0.90, 0.92]} & 0.82\,{\scriptsize[0.78, 0.86]} \\
+Outcome-only & 0.72\,{\scriptsize[0.64, 0.81]} & 0.62\,{\scriptsize[0.48, 0.75]} & 0.52\,{\scriptsize[0.36, 0.67]} & 0.33\,{\scriptsize[0.21, 0.46]} & 0.30\,{\scriptsize[0.19, 0.41]} \\
+Outcome-only + pending bit & 0.90\,{\scriptsize[0.89, 0.92]} & 0.79\,{\scriptsize[0.71, 0.87]} & 0.66\,{\scriptsize[0.53, 0.78]} & 0.37\,{\scriptsize[0.28, 0.46]} & 0.27\,{\scriptsize[0.22, 0.33]} \\
+Outcome-only + last 8 actions & 0.97\,{\scriptsize[0.97, 0.97]} & 0.69\,{\scriptsize[0.65, 0.74]} & 0.22\,{\scriptsize[0.15, 0.29]} & 0.69\,{\scriptsize[0.60, 0.79]} & 0.29\,{\scriptsize[0.19, 0.39]} \\
+Outcome-only + last 3 actions & 0.95\,{\scriptsize[0.93, 0.97]} & 0.80\,{\scriptsize[0.75, 0.85]} & 0.56\,{\scriptsize[0.45, 0.68]} & 0.68\,{\scriptsize[0.56, 0.80]} & 0.50\,{\scriptsize[0.41, 0.59]} \\
+Naive process & 0.85\,{\scriptsize[0.80, 0.91]} & 0.76\,{\scriptsize[0.64, 0.87]} & 0.65\,{\scriptsize[0.52, 0.78]} & 0.36\,{\scriptsize[0.21, 0.51]} & 0.31\,{\scriptsize[0.20, 0.43]} \\
+Naive process + pending bit & 0.92\,{\scriptsize[0.91, 0.93]} & 0.75\,{\scriptsize[0.65, 0.84]} & 0.55\,{\scriptsize[0.44, 0.66]} & 0.39\,{\scriptsize[0.33, 0.46]} & 0.30\,{\scriptsize[0.26, 0.34]} \\
+Naive process + last 8 actions & 0.97\,{\scriptsize[0.96, 0.97]} & 0.70\,{\scriptsize[0.67, 0.73]} & 0.29\,{\scriptsize[0.19, 0.38]} & 0.74\,{\scriptsize[0.70, 0.78]} & 0.36\,{\scriptsize[0.27, 0.44]} \\
+Naive process + last 3 actions & 0.97\,{\scriptsize[0.96, 0.98]} & 0.78\,{\scriptsize[0.73, 0.82]} & 0.50\,{\scriptsize[0.38, 0.61]} & 0.73\,{\scriptsize[0.61, 0.85]} & 0.54\,{\scriptsize[0.36, 0.71]} \\
+Monitorability-aware & 0.91\,{\scriptsize[0.89, 0.92]} & 0.86\,{\scriptsize[0.83, 0.89]} & 0.74\,{\scriptsize[0.68, 0.80]} & 0.63\,{\scriptsize[0.51, 0.76]} & 0.52\,{\scriptsize[0.41, 0.64]} \\
+Monitorability-aware + pending bit & 0.95\,{\scriptsize[0.94, 0.95]} & 0.83\,{\scriptsize[0.76, 0.91]} & 0.60\,{\scriptsize[0.45, 0.75]} & 0.89\,{\scriptsize[0.87, 0.91]} & 0.83\,{\scriptsize[0.76, 0.89]} \\
+Monitorability-aware + last 8 actions & 0.97\,{\scriptsize[0.96, 0.98]} & 0.78\,{\scriptsize[0.74, 0.81]} & 0.41\,{\scriptsize[0.30, 0.51]} & 0.75\,{\scriptsize[0.69, 0.81]} & 0.45\,{\scriptsize[0.38, 0.52]} \\
+Monitorability-aware + last 3 actions & 0.96\,{\scriptsize[0.96, 0.97]} & 0.85\,{\scriptsize[0.80, 0.90]} & 0.66\,{\scriptsize[0.58, 0.75]} & 0.91\,{\scriptsize[0.90, 0.92]} & 0.82\,{\scriptsize[0.78, 0.86]} \\
 \bottomrule
 \end{tabular}

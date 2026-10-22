@@ -1,12 +1,14 @@
-\begin{tabular}{lccccccccc}
+\begin{tabular}{lcccc}
 \toprule
-Reward & Per correct step & Per informative check & Collapsed & low detection & Late success & Success 3--6 & Success 7--9 & Success 10--14 & Last ckpt.\ 7--9 \\
+Reward & Success 3--6 & Success 7--9 & Success 10--14 & Last ckpt.\ 7--9 \\
 \midrule
-Outcome-only & -- & -- & 85\% & 60\% & 0.32 & 0.72\,{\scriptsize[0.64, 0.81]} & 0.62\,{\scriptsize[0.48, 0.75]} & 0.52\,{\scriptsize[0.36, 0.67]} & 0.33\,{\scriptsize[0.21, 0.46]} \\
-Naive process (main experiment) & 0.015 & 0.02 & 62\% & 17\% & 0.43 & 0.85\,{\scriptsize[0.80, 0.91]} & 0.76\,{\scriptsize[0.64, 0.87]} & 0.65\,{\scriptsize[0.52, 0.78]} & 0.36\,{\scriptsize[0.21, 0.51]} \\
-Check payment only & 0 & 0.02 & 87\% & 49\% & 0.29 & 0.66\,{\scriptsize[0.50, 0.82]} & 0.48\,{\scriptsize[0.32, 0.63]} & 0.39\,{\scriptsize[0.26, 0.52]} & 0.27\,{\scriptsize[0.16, 0.37]} \\
-Step bonus only & 0.015 & 0 & 67\% & 33\% & 0.39 & 0.76\,{\scriptsize[0.64, 0.88]} & 0.65\,{\scriptsize[0.55, 0.74]} & 0.53\,{\scriptsize[0.41, 0.65]} & 0.33\,{\scriptsize[0.17, 0.48]} \\
-Larger step bonus & 0.05 & 0 & 51\% & 20\% & 0.46 & 0.80\,{\scriptsize[0.77, 0.84]} & 0.69\,{\scriptsize[0.62, 0.77]} & 0.59\,{\scriptsize[0.49, 0.70]} & 0.41\,{\scriptsize[0.28, 0.53]} \\
-Largest step bonus & 0.1 & 0 & 28\% & 8\% & 0.53 & 0.76\,{\scriptsize[0.75, 0.77]} & 0.67\,{\scriptsize[0.58, 0.75]} & 0.58\,{\scriptsize[0.48, 0.68]} & 0.42\,{\scriptsize[0.31, 0.54]} \\
+Outcome-only & 0.72\,{\scriptsize[0.64, 0.81]} & 0.62\,{\scriptsize[0.48, 0.75]} & 0.52\,{\scriptsize[0.36, 0.67]} & 0.33\,{\scriptsize[0.21, 0.46]} \\
+Naive process (main experiment) & 0.85\,{\scriptsize[0.80, 0.91]} & 0.76\,{\scriptsize[0.64, 0.87]} & 0.65\,{\scriptsize[0.52, 0.78]} & 0.36\,{\scriptsize[0.21, 0.51]} \\
+Check payment 0.02 only & 0.66\,{\scriptsize[0.50, 0.82]} & 0.48\,{\scriptsize[0.32, 0.63]} & 0.39\,{\scriptsize[0.26, 0.52]} & 0.27\,{\scriptsize[0.16, 0.37]} \\
+Step bonus 0.015 only & 0.76\,{\scriptsize[0.64, 0.88]} & 0.65\,{\scriptsize[0.55, 0.74]} & 0.53\,{\scriptsize[0.41, 0.65]} & 0.33\,{\scriptsize[0.17, 0.48]} \\
+Step bonus 0.05 only & 0.80\,{\scriptsize[0.77, 0.84]} & 0.69\,{\scriptsize[0.62, 0.77]} & 0.59\,{\scriptsize[0.49, 0.70]} & 0.41\,{\scriptsize[0.28, 0.53]} \\
+Step bonus 0.1 only & 0.76\,{\scriptsize[0.75, 0.77]} & 0.67\,{\scriptsize[0.58, 0.75]} & 0.58\,{\scriptsize[0.48, 0.68]} & 0.42\,{\scriptsize[0.31, 0.54]} \\
+Step bonus 0.05, once per step & 0.82\,{\scriptsize[0.78, 0.86]} & 0.73\,{\scriptsize[0.66, 0.79]} & 0.61\,{\scriptsize[0.52, 0.70]} & 0.42\,{\scriptsize[0.30, 0.55]} \\
+Step bonus 0.1, once per step & 0.80\,{\scriptsize[0.76, 0.83]} & 0.72\,{\scriptsize[0.65, 0.79]} & 0.61\,{\scriptsize[0.52, 0.70]} & 0.45\,{\scriptsize[0.28, 0.61]} \\
 \bottomrule
 \end{tabular}
