@@ -491,6 +491,12 @@ def main(argv: list[str] | None = None) -> None:
         variants = [m for m in summaries["ablations"].method.unique() if m != "ma_inv" and not m.endswith(FINAL)]
         pairs = [("ma_inv", m, s) for m in variants for s in ("train_like", "heldout_long", "heldout_xlong")]
         extras.update(comparison_macros(key_numbers(ablation_seeds, pairs), prefix="abl"))
+    if "sensitivity" in summaries:
+        sensitivity_seeds = pd.read_csv(results / "sensitivity" / "eval_per_seed.csv")
+        tags = sorted({m.removeprefix("ma_inv_") for m in summaries["sensitivity"].method if m.startswith("ma_inv_")})
+        tags = [t for t in tags if not t.endswith(FINAL)]
+        pairs = [(f"ma_inv_{t}", f"ma_abs_{t}", s) for t in tags for s in ("heldout_long", "heldout_xlong")]
+        extras.update(comparison_macros(key_numbers(sensitivity_seeds, pairs), prefix="sens"))
     coverage_path = results / "observation_coverage.csv"
     if coverage_path.exists():
         for _, c in pd.read_csv(coverage_path).iterrows():

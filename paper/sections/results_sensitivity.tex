@@ -1,1 +1,11 @@
-(pending sensitivity)
+\paragraph{Sensitivity to the learner's hyperparameters.}
+The main experiment uses the original study's DQN settings. To check that the encoder effect is not specific to them, we retrain the monitorability-aware agents with both encoders under three alternatives, five seeds each: learning rate $3{\cdot}10^{-4}$; hard target updates every 1{,}000 steps; and Polyak-averaged targets ($\tau = 0.005$)~\citep{lillicrap2016continuous} (Table~\ref{tab:sensitivity}). None of them removes the churn. In every setting the encoder gap reproduces: on lengths 10--14 the invariant encoder beats the absolute one by $+$\val{sens/ma_inv_lr3e-4-ma_abs_lr3e-4/heldout_xlong/success}, $+$\val{sens/ma_inv_sync1000-ma_abs_sync1000/heldout_xlong/success} and $+$\val{sens/ma_inv_polyak-ma_abs_polyak/heldout_xlong/success} respectively, in 5/5 seeds each. With five seeds, the smallest attainable sign-flip $p$-value is $0.0625$.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\caption{Sensitivity of the encoder comparison to DQN hyperparameters (monitorability-aware reward; mean over 5 seeds, 95\% $t$-interval). Main-experiment values with the default settings are in Table~\ref{tab:main}.}
+\label{tab:sensitivity}
+\resizebox{\linewidth}{!}{\input{tables/sensitivity_results.tex}}
+\end{table}
