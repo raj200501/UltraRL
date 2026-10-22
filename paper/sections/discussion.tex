@@ -1,26 +1,34 @@
 \section{Discussion}
 \label{sec:discussion}
 
-\paragraph{What process rewards buy.}
-In this testbed the main benefit of the monitorability-aware reward is not that it unlocks behaviour outcome reward cannot reach. With a suitable observation, outcome-only agents also find checking policies. The benefit is that it makes those policies \emph{stable} under continued training and \emph{selective}: checks are concentrated on cued steps. The cue bonus does most of this work (\S\ref{sec:ablations}). The cue bonus is also the most domain-specific term, since it rewards the agent for acting on a signal the reward designer already trusts. The general lesson for process supervision is that a process reward which pays for checking where a trusted signal says checking is valuable can make checking reliable. Whether the agent's checking then remains useful depends on whether that signal remains trustworthy.
+\paragraph{What process rewards buy here.}
+The monitorability-aware reward does not unlock behaviour that outcome reward can never reach: with a suitable observation, outcome-only agents also find checking policies. What it buys is that checking is \emph{retained}, and that cued steps are checked reliably. Outcome-only agents with invariant features stop checking in most late checkpoints; monitorability-aware agents never do. Almost all of this comes from one term that pays for checking where a trusted cue says checking is valuable (\S\ref{sec:ablations}). For process supervision more broadly, the lesson is that rewarding a step-level behaviour helps exactly as much as the signal it is conditioned on is trustworthy: the agents tracked cue quality in both directions (\S\ref{sec:shifts}).
+
+\paragraph{Process rewards are themselves gameable.}
+The original reward paid for \emph{catching} a fault, not for fixing it, and its agents repeatedly drifted into policies that collect the detection bonus and then fail to repair (\S\ref{sec:norepair}). This is a small, fully measurable instance of specification gaming of a process reward. It was invisible in success rates at selected checkpoints and surfaced only in the training dynamics. Paying for the repair instead removed it and brought the last checkpoint close to the selected one (\S\ref{sec:followups}). Designers of step-level rewards for reasoning models face the same question at larger scale: which intermediate events does the reward pay for, and are they the ones the designer actually cares about?
 
 \paragraph{What process rewards do not buy.}
-Process rewards did not fix length generalization. Under absolute position features, the best reward still fell below the never-check baseline on long chains. The bottleneck was what the policy could condition on, not what it was paid for. The same pattern appears in the budget shift, where the slack feature of the invariant encoder goes out of range. For process-supervised reasoning models, this suggests that ``learned to verify on training problems'' and ``will verify appropriately on longer problems'' are separate claims and should be evaluated separately. Positional shortcuts are a plausible way for the second claim to fail even when the first one holds.
+Process rewards did not fix length generalization. Under absolute position features, the best reward still fell below the never-check baseline on long chains. Every held-out observation was novel to the policy. Adding \emph{more} information (slack per remaining step) made generalization worse when that information was out of range, as the coverage analysis predicted before the experiment was run. For process-supervised reasoning models, this suggests that ``learned to verify on training problems'' and ``will verify appropriately on longer problems'' are separate claims, to be evaluated separately. Positional or length features are a plausible way for the second claim to fail while the first holds.
 
 \paragraph{Evaluation lessons.}
-Three problems in the earlier version of this study each pushed its conclusion in the wrong direction, and none of them was visible in its headline numbers:
+Two problems in the earlier version of this study pushed its conclusion toward a false negative: a representation confound, and last-checkpoint evaluation of churning policies. A third, a localization metric that credited unchecked faults, inflated diagnostic scores without changing the main comparison. None of the three was visible in the headline numbers. Small exact testbeds make such problems cheap to find. We recommend four practices for RL on reasoning-like tasks:
 \begin{itemize}
-  \item a representation confound;
-  \item last-checkpoint evaluation of churning policies;
-  \item a metric that credited unchecked faults.
+  \item report learning curves and per-seed variability;
+  \item select checkpoints only on in-distribution validation;
+  \item check how much of a held-out set is actually out of range for the policy's inputs;
+  \item test whether out-of-distribution failures move when the representation changes but the reward does not.
 \end{itemize}
-Small exact testbeds make such problems cheap to find. We recommend reporting learning curves and per-seed variability for RL on reasoning-like tasks, selecting checkpoints only on in-distribution validation, and testing whether out-of-distribution failures move when the representation changes but the reward does not.
 
 \paragraph{Limitations.}
-The environment is deliberately minimal. It has at most one fault, checks are exact, the cue is given rather than learned, and the agent is a small memoryless MLP rather than a language model. Process rewards use privileged step correctness, so they represent an idealised process reward model. We study one learner (Double DQN) in one hyperparameter regime plus a small sensitivity sweep. Policy-gradient methods or recurrent agents might churn less, or might learn different allocations. Finally, our invariant encoder hides information that the optimal policy needs on long chains (\S\ref{sec:residual}). The remaining gap is a representation problem we expose but only partly solve.
+The environment is deliberately minimal. It has at most one fault, checks are exact, the cue is given rather than learned, and the agent is a small MLP rather than a language model. Process rewards use privileged step correctness, so they stand in for an idealised process reward model. We study one learner (Double DQN) with a small sensitivity sweep; policy-gradient or recurrent agents might churn less, or allocate their budget differently. With 10 seeds, differences of a few points (for example, between the naive and monitorability-aware rewards on long chains) are not resolved. Finally, no encoder we tried closes the gap to the cue-triggered heuristic on the longest chains. Doing so seems to require a representation of remaining length that stays in range as chains grow, which we leave open.
 
 \section{Conclusion}
-In a small budgeted-verification testbed, process rewards made checking behaviour learnable and stable, and made it target suspicious steps. Whether that behaviour carried over to longer chains was decided mostly by the agent's observation encoding, not by its reward. Correcting a positional confound turned an apparent negative result about monitorability-aware RL into a positive but qualified one. We hope the testbed is useful for probing how process supervision shapes \emph{when} learned reasoners check their work.
+In a small budgeted-verification testbed, process rewards made checking behaviour learnable and kept it from collapsing, mainly by paying for checks where a trusted cue pointed. Whether that behaviour carried over to longer chains was decided mostly by the observation encoding, not by the reward. One part of the reward was gamed until it paid for repairs rather than detections. Correcting a positional confound turned an apparent negative result about monitorability-aware RL into a positive but qualified one. We hope the testbed is useful for probing how process supervision shapes \emph{when} learned reasoners check their work.
 
 \paragraph{Reproducibility.}
-All code, configs, trained checkpoints, learning curves and per-seed evaluation results are in the accompanying repository (\url{https://github.com/raj200501/UltraRL}). \texttt{make experiments} reruns every experiment in about four hours on a 4-core CPU; \texttt{make paper} rebuilds every figure, table and number in this paper from the saved results.
+All code, configs, trained checkpoints, learning curves and per-seed evaluation results are in the accompanying repository (\url{https://github.com/raj200501/UltraRL}).
+\begin{itemize}
+  \item \texttt{make report} and \texttt{make paper} rebuild every figure, table and number in this paper from the saved results.
+  \item \texttt{make reproduce} retrains every agent from scratch, which takes about five hours on a 4-core CPU, and checks the checkpoints bitwise against the saved ones.
+  \item \texttt{make equivalence} re-runs the comparison against the original environment.
+\end{itemize}

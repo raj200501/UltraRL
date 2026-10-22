@@ -1,1 +1,24 @@
-\subsection{Follow-up interventions}\label{sec:followups} (pending)
+\subsection{Follow-up interventions}
+\label{sec:followups}
+
+The analyses above suggest three explanations, each with a direct test. We train each intervention with the monitorability-aware reward, invariant observations and 10 seeds, and compare it with the reference agent on paired episodes (Table~\ref{tab:followups}).
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\caption{Follow-up interventions (mean over 10 seeds, 95\% $t$-interval). ``Last ckpt.'' evaluates the last checkpoint instead of the selected one; ``collapsed'' is the fraction of late checkpoints (after 5{,}000 episodes) with training-length success $\le 0.35$; ``wasted \texttt{REVISE}'' counts non-repair \texttt{REVISE}s per episode at lengths 10--14.}
+\label{tab:followups}
+\resizebox{\linewidth}{!}{\input{tables/followup_results.tex}}
+\end{table}
+
+\paragraph{Out-of-range inputs, not missing information, break generalization.}
+Adding slack per remaining step, $\mathrm{clip}(\mathrm{slack}/(d-t), 0, 2)/2$, gives the agent exactly the information that \S\ref{sec:residual} identified as missing. It also produces unseen observations at \val{coverage/ratio/heldout_long/unseen_rate/pct} of decision points at lengths 7--9 and \val{coverage/ratio/heldout_xlong/unseen_rate/pct} at 10--14, against \val{coverage/invariant/heldout_long/unseen_rate/pct} and \val{coverage/invariant/heldout_xlong/unseen_rate/pct} for the invariant encoder. We computed this coverage, and committed it to the repository (commit \texttt{473bbe6}), before training the follow-up agents. On the out-of-range explanation it predicts worse generalization despite the extra information, and that is what happened. Held-out success falls to \val{followups/ma_ratio/heldout_long/success} at 7--9 and \val{followups/ma_ratio/heldout_xlong/success} at 10--14 ($\val{diff/ma_ratio-ma_inv/heldout_xlong/success}$, $p=\val{diff/ma_ratio-ma_inv/heldout_xlong/success/p}$). Fault detection stays high (\val{followups/ma_ratio/heldout_xlong/fault_detected}), but repairs are rarely completed (\val{followups/ma_ratio/heldout_xlong/success_given_detected}).
+
+\paragraph{A memory bit removes the wasted \texttt{REVISE}s.}
+Adding one bit that records whether an \textsc{unsafe} check has been seen removes the aliasing between repairs and no-ops. Wasted \texttt{REVISE}s at 10--14 fall from \val{main/ma_inv/heldout_xlong/nonrepair_revise_count} to \val{followups/ma_memory/heldout_xlong/nonrepair_revise_count} per episode. Training-length success rises by $+$\val{diff/ma_memory-ma_inv/train_like/success} (\val{diff/ma_memory-ma_inv/train_like/success/npos}/10 seeds, $p=\val{diff/ma_memory-ma_inv/train_like/success/p}$). Held-out success at selected checkpoints does not change resolvably ($p=\val{diff/ma_memory-ma_inv/heldout_xlong/success/p}$ at 10--14), because the agent spends the recovered slack on more un-cued checks (\val{followups/ma_memory/heldout_xlong/verify_rate_cue0} vs.\ \val{main/ma_inv/heldout_xlong/verify_rate_cue0}). The memory bit also halves checkpoint collapse (\val{followups/ma_memory/collapse_rate/pct} vs.\ \val{main/ma_inv/collapse_rate/pct}).
+
+\paragraph{Paying for repair removes the detect-without-repair collapse.}
+Moving the $0.25$ fault bonus from detection to the first correct re-execution of the located fault directly tests the explanation of \S\ref{sec:norepair}. Collapsed late checkpoints drop from \val{main/ma_inv/collapse_rate/pct} to \val{followups/ma_repair/collapse_rate/pct}. The mean absolute change between consecutive evaluations drops from \val{main/ma_inv/mean_abs_change} to \val{followups/ma_repair/mean_abs_change}. With the memory bit added as well, collapse disappears entirely (\val{followups/ma_memory_repair/collapse_rate/pct}; change \val{followups/ma_memory_repair/mean_abs_change}).
+
+The benefit shows up in \emph{reliability} rather than peak performance. At selected checkpoints the repair-paid reward is not better than the original (\val{diff/ma_repair-ma_inv/heldout_long/success} at 7--9, $p=\val{diff/ma_repair-ma_inv/heldout_long/success/p}$), because selection already discards collapsed checkpoints. At the last checkpoint it is better: $+$\val{diff/ma_repair@final-ma_inv@final/heldout_long/success} [\val{diff/ma_repair@final-ma_inv@final/heldout_long/success/lo}, \val{diff/ma_repair@final-ma_inv@final/heldout_long/success/hi}] at 7--9 ($p=\val{diff/ma_repair@final-ma_inv@final/heldout_long/success/p}$) and $+$\val{diff/ma_repair@final-ma_inv@final/heldout_xlong/success} at 10--14 ($p=\val{diff/ma_repair@final-ma_inv@final/heldout_xlong/success/p}$). The gap between selected and last checkpoints shrinks from \val{main/ma_inv/heldout_long/success}~vs.~\val{main/ma_inv@final/heldout_long/success} to \val{followups/ma_repair/heldout_long/success}~vs.~\val{followups/ma_repair@final/heldout_long/success}. In practice this matters: with the process reward paying for the outcome its designer intended, the policy that training ends with is close to the best one it found.
