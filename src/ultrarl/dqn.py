@@ -85,8 +85,11 @@ class DQNAgent:
         self, obs: np.ndarray, mask: np.ndarray, epsilon: float = 0.0, rng: np.random.Generator | None = None
     ) -> int:
         """Epsilon-greedy over available actions (greedy when ``epsilon == 0``)."""
-        if epsilon > 0.0 and rng is not None and rng.random() < epsilon:
-            return int(rng.choice(np.flatnonzero(mask)))
+        if epsilon > 0.0:
+            if rng is None:
+                raise ValueError("epsilon-greedy action selection needs an rng")
+            if rng.random() < epsilon:
+                return int(rng.choice(np.flatnonzero(mask)))
         q = np.where(mask, self.q_values(obs), MASKED_Q)
         return int(np.argmax(q))
 

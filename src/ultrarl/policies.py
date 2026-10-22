@@ -44,19 +44,17 @@ def cue_triggered(o: Observable, mask: np.ndarray) -> int:
     return _think_or_commit(o, mask)
 
 
-REPAIR_COST = 2  # REVISE + re-THINK
-
-
 def budget_aware(margin: int) -> Policy:
-    """Check cued steps whenever a repair stays affordable, and also check un-cued
-    steps while the budget slack exceeds that by ``margin``."""
+    """Check cued steps whenever a check plus a repair stays affordable, and also
+    check un-cued steps while the budget slack exceeds that by ``margin`` units."""
 
     def policy(o: Observable, mask: np.ndarray) -> int:
         if o.last_verify == VerifyStatus.UNSAFE and mask[Action.REVISE]:
             return Action.REVISE
-        slack = o.remaining_budget - (o.depth - o.step)
-        affordable = slack >= 1 + REPAIR_COST
-        wanted = o.cue == 1 or slack >= 1 + REPAIR_COST + margin
+        slack = o.remaining_budget - (o.depth - o.step) * o.think_cost
+        needed = o.verify_cost + o.revise_cost + o.think_cost  # check, then undo and redo
+        affordable = slack >= needed
+        wanted = o.cue == 1 or slack >= needed + margin
         if o.step > 0 and not o.step_checked and affordable and wanted and mask[Action.VERIFY]:
             return Action.VERIFY
         return _think_or_commit(o, mask)

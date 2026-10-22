@@ -1,20 +1,27 @@
 """Observation encoders.
 
-Two encoders expose the *same* information content relevant to the task but
-differ in how position is represented:
+All encoders expose the local information a hand-coded checking policy needs
+(cue, budget slack, unchecked gap, last check result, revised flag). They differ
+in whether, and how, they reveal position and chain length:
 
-``absolute`` (10-d)
+``absolute`` (10-d), the original study's encoder
     progress ``t / D_max``, budget fraction ``b / B``, depth ``d / D_max``,
-    normalised budget slack, unchecked gap ``g / D_max``, cue, revised flag and a
-    one-hot of the last verification result. Position and depth features take
-    values on longer chains that never occur on training-length chains.
+    normalised slack ``clip(0.5 + slack / 2B, 0, 1)``, unchecked gap ``g / D_max``,
+    cue, revised flag and a one-hot of the last verification result. Several of
+    these depend on the chain length (``B = d + budget_extra``), so longer chains
+    produce feature values never seen on training-length chains.
+
+``absolute_nopos`` (8-d), a control
+    ``absolute`` without the two position features ``t / D_max`` and
+    ``d / D_max``. The remaining length-dependent normalisations are kept, which
+    separates the effect of position features from that of the other features.
 
 ``invariant`` (9-d)
     at-end flag ``[t = d]``, at-start flag ``[t = 0]``, clipped budget slack
     ``clip(b - (d - t), -10, 10) / 10``, clipped gap ``min(g, 3) / 3``, cue,
-    revised flag and the verification one-hot. None of these features depends
-    on the absolute chain length, so longer chains produce no new feature values
-    (as long as the budget slack stays in range).
+    revised flag and the verification one-hot. It drops absolute position and
+    length, so the number of remaining steps cannot be recovered, and longer
+    chains rarely produce new observations (as long as the slack stays in range).
 
 ``ratio`` (10-d)
     the invariant features plus slack per remaining step,
@@ -41,8 +48,8 @@ import numpy as np
 if TYPE_CHECKING:
     from ultrarl.env import Observable
 
-OBSERVATION_KINDS = ("absolute", "invariant", "ratio", "memory")
-_DIMS = {"absolute": 10, "invariant": 9, "ratio": 10, "memory": 10}
+OBSERVATION_KINDS = ("absolute", "absolute_nopos", "invariant", "ratio", "memory")
+_DIMS = {"absolute": 10, "absolute_nopos": 8, "invariant": 9, "ratio": 10, "memory": 10}
 SLACK_SCALE = 10.0
 GAP_CAP = 3
 
@@ -62,17 +69,15 @@ def _verify_one_hot(o: Observable) -> list[float]:
 
 def encode_observation(kind: str, o: Observable) -> np.ndarray:
     slack = o.remaining_budget - max(0, o.depth - o.step)
-    if kind == "absolute":
-        features = [
-            o.step / max(1, o.max_depth),
+    if kind in ("absolute", "absolute_nopos"):
+        position = [o.step / max(1, o.max_depth), o.depth / max(1, o.max_depth)]
+        budget = [
             o.remaining_budget / max(1, o.max_budget),
-            o.depth / max(1, o.max_depth),
             float(np.clip(0.5 + slack / max(1, 2 * o.max_budget), 0.0, 1.0)),
-            o.unchecked_gap / max(1, o.max_depth),
-            float(o.cue),
-            float(o.revised_recently),
-            *_verify_one_hot(o),
         ]
+        rest = [o.unchecked_gap / max(1, o.max_depth), float(o.cue), float(o.revised_recently), *_verify_one_hot(o)]
+        # "absolute" keeps the original study's feature order
+        features = [position[0], budget[0], position[1], budget[1], *rest] if kind == "absolute" else [*budget, *rest]
     elif kind in ("invariant", "ratio", "memory"):
         features = [
             float(o.step >= o.depth),

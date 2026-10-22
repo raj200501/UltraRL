@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 
 from ultrarl.dqn import DQNAgent, ReplayBuffer
@@ -88,3 +89,9 @@ def test_double_dqn_target_masks_terminates_and_decouples_networks():
     # row 0: online argmax = 0 -> target net value 10; row 1: action 0 masked -> argmax 2 -> 30;
     # row 2: terminal -> no bootstrap.
     assert torch.allclose(target, torch.tensor([1.0 + 0.5 * 10.0, 1.0 + 0.5 * 30.0, 1.0]))
+
+
+def test_epsilon_without_rng_is_an_error():
+    agent = DQNAgent(obs_dim=2, num_actions=2, hidden_size=4)
+    with pytest.raises(ValueError):
+        agent.act(np.zeros(2, dtype=np.float32), np.array([True, True]), epsilon=0.5)

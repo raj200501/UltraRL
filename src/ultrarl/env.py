@@ -87,8 +87,10 @@ class Observable:
     unchecked_gap: int
     step_checked: bool
     fault_located: bool  # an UNSAFE check has been observed earlier in this episode
-    budget_extra: int
-    max_depth: int
+    max_depth: int  # normaliser used by the absolute encoder (a fixed constant, not the chain length)
+    think_cost: int  # action costs are part of the task specification
+    verify_cost: int
+    revise_cost: int
 
 
 @dataclass
@@ -170,14 +172,13 @@ class ChainEnv:
         self.checked: set[int] = set()
         self.fault_located = False
         self.repaired = False
-        self.detection_step: int | None = None
         self.last_verify = VerifyStatus.NONE
-        self.last_action: Action | None = None
         self.revised_recently = False
         self.done = False
         self.success = False
         self.incomplete_commit = False
         self.voluntary_incomplete = False
+        self.commit_at_start = False
         self.stats = EpisodeStats()
         return self.observation()
 
@@ -247,8 +248,10 @@ class ChainEnv:
             unchecked_gap=self.unchecked_gap,
             step_checked=self.step_idx in self.checked,
             fault_located=self.fault_located,
-            budget_extra=self.cfg.budget_extra,
             max_depth=self.cfg.max_depth,
+            think_cost=self.cfg.think_cost,
+            verify_cost=self.cfg.verify_cost,
+            revise_cost=self.cfg.revise_cost,
         )
 
     def observation(self) -> np.ndarray:
@@ -279,6 +282,7 @@ class ChainEnv:
             remaining_steps = self.depth - self.step_idx
             could_finish = self.remaining_budget >= remaining_steps * self.cfg.think_cost
             self.voluntary_incomplete = self.incomplete_commit and could_finish
+            self.commit_at_start = self.step_idx == 0
             event.success = self.success
 
         self.remaining_budget -= event.cost
@@ -287,7 +291,6 @@ class ChainEnv:
         event.gap_after = self.unchecked_gap
         reward = compute_reward(self.cfg, event)
 
-        self.last_action = action
         self.revised_recently = action == Action.REVISE
         if action != Action.VERIFY:
             self.last_verify = VerifyStatus.NONE
@@ -326,7 +329,6 @@ class ChainEnv:
         if unsafe:
             self.stats.verify_tp += 1
             self.fault_located = True
-            self.detection_step = t
 
     def _revise(self) -> None:
         self.stats.revise_count += 1
@@ -356,9 +358,11 @@ class ChainEnv:
             # committed before executing the whole chain (voluntarily = the budget could still finish it)
             "incomplete_commit": float(self.incomplete_commit),
             "voluntary_incomplete_commit": float(self.voluntary_incomplete),
+            "commit_at_start": float(self.commit_at_start),  # COMMIT before executing any step
             "verify_count": float(s.verify_count),
             "revise_count": float(s.revise_count),
-            # REVISEs that do not directly follow an UNSAFE check (no repair can result)
+            # REVISEs not issued directly after an UNSAFE check; almost all of them undo a
+            # correct step (a repair that first moves further forward is the rare exception)
             "nonrepair_revise_count": float(s.revise_count - s.repair_revise_count),
             "verify_tp": float(s.verify_tp),
             "depth": float(self.depth),
@@ -366,7 +370,7 @@ class ChainEnv:
             # P(fault detected by an UNSAFE verification | fault present)
             "fault_detected": float(self.fault_located) if fault else nan,
             # P(success | fault present): requires detect -> revise -> redo
-            "repair_success": float(self.success) if fault else nan,
+            "success_given_fault": float(self.success) if fault else nan,
             # P(success | fault detected): does the agent finish the repair it started?
             "success_given_detected": float(self.success) if self.fault_located else nan,
             "fresh_opps_cue0": float(s.fresh_opps[0]),

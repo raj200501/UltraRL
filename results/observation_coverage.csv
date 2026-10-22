@@ -1,6 +1,8 @@
 observation,setting,unseen_fraction,points
 absolute,heldout_long,1.0,157647
 absolute,heldout_xlong,1.0,207138
+absolute_nopos,heldout_long,0.9822261127709376,157647
+absolute_nopos,heldout_xlong,0.9799650474562852,207138
 invariant,heldout_long,0.020127246316136684,157647
 invariant,heldout_xlong,0.05115430292848246,207138
 ratio,heldout_long,0.5143136247438899,157647

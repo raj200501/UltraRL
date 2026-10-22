@@ -15,25 +15,26 @@
 \usepackage{xcolor}
 \usepackage{graphicx}
 \usepackage{caption}
-\hypersetup{colorlinks=true, linkcolor=black, citecolor={blue!55!black}, urlcolor={blue!55!black}}
+\hypersetup{colorlinks=true, linkcolor=black, citecolor={blue!55!black}, urlcolor={blue!55!black},
+  pdftitle={Learning When to Verify Under a Budget}, pdfauthor={Raj Kashikar}}
 
 \input{numbers.tex}
 
 \title{Learning When to Verify Under a Budget:\\Process Rewards, Representations, and Length Generalization}
 
-\author{Raj Kashikar}
+\author{Raj Kashikar\\\texttt{\href{https://github.com/raj200501/UltraRL}{github.com/raj200501/UltraRL}}}
+\date{October 2026}
 
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-Reasoning systems must decide not only how to solve a problem but also when to spend effort checking their own work. We study this decision in a small testbed where everything of interest is exactly measurable. An agent executes an arithmetic chain that may contain one silent fault, sees a noisy one-bit cue per step, and divides a fixed budget between executing, verifying and repairing steps. We train small Double DQN agents with outcome-only, naive process and monitorability-aware rewards and several observation encoders, and evaluate them on chains up to $2.3\times$ longer than in training, with 10 seeds and paired statistics. We report four findings.
+Reasoning systems must decide when to spend effort checking their own work. We study this decision in a small testbed where everything is exactly measurable. An agent executes an arithmetic chain that may contain one silent fault, sees a noisy one-bit cue per step, and divides a fixed budget between executing, verifying and repairing steps. We train Double DQN agents with outcome-only and process rewards and several observation encoders, and evaluate them on chains up to $2.3\times$ longer than in training, with 10 seeds and paired tests.
 \begin{enumerate}
-  \item Process rewards make checking learnable and keep it from collapsing. With length-invariant observations, outcome-only agents find checking policies but have abandoned them in \val{main/outcome_inv/collapse_nevercheck_rate/pct} of late checkpoints, against \val{main/ma_inv/collapse_nevercheck_rate/pct} under the monitorability-aware reward. Ablations attribute nearly all of that reward's benefit to one term that pays for checking cued steps.
-  \item The reward is partly gamed. It pays for \emph{catching} a fault, and agents repeatedly drift into policies that detect faults without repairing them. Paying for the repair instead removes this collapse (\val{main/ma_inv/collapse_rate/pct} $\to$ \val{followups/ma_repair/collapse_rate/pct} of late checkpoints) and makes the last checkpoint far more reliable.
-  \item Length generalization is decided mainly by representation. With absolute position features every held-out observation is novel, and every reward scheme falls \emph{below} a never-check baseline on lengths 10--14. With length-invariant features the same reward keeps \val{main/ma_inv/heldout_long/success} success at lengths 7--9, within a few points of a hand-coded checker, and \val{main/ma_inv/heldout_xlong/success} at 10--14. A feature that adds information but goes out of range on long chains made generalization worse, as an observation-coverage analysis predicted before the experiment.
-  \item DQN policies churn throughout training, so last-checkpoint evaluation understates what runs learn.
+  \item Rewarding informative checks helps agents acquire and retain checking. With length-invariant observations, \val{main/outcome_inv/collapse_rate/pct} of outcome-only agents' late checkpoints collapse to low success, mostly by abandoning checking, against \val{main/ma_inv/collapse_rate/pct} under a reward that pays for checks. Any term that pays for checks recovers most of this benefit on training lengths, but only the cue-specific terms keep checking frugal enough to work on long chains.
+  \item Length generalization depends mainly on the observation encoder. With the original encoder's length-dependent features, every held-out observation is novel and every reward falls below a never-check baseline on lengths 10--14. With length-invariant features, the same reward keeps \val{main/ma_inv/heldout_long/success} success at lengths 7--9 and \val{main/ma_inv/heldout_xlong/success} at 10--14. Removing only the position features is not enough.
+  \item Under every reward, agents repeatedly fall into policies that detect faults but do not repair them. This is a learning failure, not reward hacking. Paying the fault bonus at the repair step removes it (\val{main/ma_inv/collapse_rate/pct} $\to$ \val{followups/ma_repair/collapse_rate/pct} of late checkpoints) and makes the last checkpoint reliable.
 \end{enumerate}
 These results revise an earlier version of this study, which attributed the length-generalization failure to the reward.
 \end{abstract}

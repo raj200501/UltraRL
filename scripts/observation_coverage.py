@@ -1,5 +1,5 @@
 """How often does each observation encoder produce feature vectors on held-out
-lengths that never occur on training lengths?
+lengths that do not occur in a large reference sample of training-length rollouts?
 
     python scripts/observation_coverage.py   # writes results/observation_coverage.csv
 
@@ -12,19 +12,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ultrarl.config import EnvConfig
+from ultrarl.config import load_experiment
 from ultrarl.env import ChainEnv
 from ultrarl.observations import OBSERVATION_KINDS
 from ultrarl.policies import build_heuristic
 from ultrarl.rollout import CURVE_STREAM, episode_seed
 
+ROOT = Path(__file__).resolve().parents[1]
+EXPERIMENT = load_experiment(ROOT / "configs" / "main.yaml")  # environment and length settings
 POLICIES = ["random", "always_think", "verify_every_step", "cue_triggered", "budget_aware_1"]
-SETTINGS = {"train_like": (3, 6), "heldout_long": (7, 9), "heldout_xlong": (10, 14)}
+SETTINGS = {s.name: s.depth_range for s in EXPERIMENT.eval_settings if not s.env_overrides}
 EPISODES = 3000
 
 
 def collect(kind: str, depth_range: tuple[int, int], name: str) -> list[bytes]:
-    env = ChainEnv(EnvConfig(observation=kind))
+    env = ChainEnv(EXPERIMENT.env.replace(observation=kind))
     keys = []
     for p, policy_name in enumerate(POLICIES):
         policy = build_heuristic(policy_name, seed=p)
@@ -46,7 +48,7 @@ def main() -> None:
             unseen = np.mean([k not in seen for k in keys])
             rows.append({"observation": kind, "setting": name, "unseen_fraction": float(unseen), "points": len(keys)})
             print(f"{kind:>9} {name:>13}: {unseen:.3f} of decision points have an unseen observation")
-    out = Path("results/observation_coverage.csv")
+    out = ROOT / "results" / "observation_coverage.csv"
     pd.DataFrame(rows).to_csv(out, index=False)
     print(f"wrote {out}")
 

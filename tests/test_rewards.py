@@ -1,4 +1,5 @@
 import math
+from types import SimpleNamespace
 
 import pytest
 
@@ -84,9 +85,13 @@ def test_gap_term_telescopes_to_terminal_gap():
     assert total == pytest.approx(verify_terms - cfg.ma_gap_penalty * 3 / 5)
 
 
-def test_unknown_scheme_raises():
+def test_unknown_scheme_is_rejected_at_config_and_reward_level():
     with pytest.raises(ValueError):
-        compute_reward(EnvConfig(reward_scheme="nope"), StepEvent(action="THINK", depth=3, cost=1))
+        EnvConfig(reward_scheme="nope")
+    # compute_reward guards against configs that bypass EnvConfig validation
+    cfg = SimpleNamespace(**{**vars(EnvConfig()), "reward_scheme": "nope"})
+    with pytest.raises(ValueError, match="unknown reward scheme"):
+        compute_reward(cfg, StepEvent(action="THINK", depth=3, cost=1))
 
 
 def test_fault_bonus_on_repair_moves_the_bonus_from_detection_to_repair():

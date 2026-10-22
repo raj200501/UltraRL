@@ -1,6 +1,8 @@
-"""End-to-end test of the figure/table/macro generation on a synthetic results tree."""
+"""End-to-end test of the figure/table/macro generation on a synthetic results tree
+covering every experiment the paper reports."""
 
 import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -8,34 +10,35 @@ import pytest
 
 from ultrarl import report
 from ultrarl.config import load_experiment
+from ultrarl.observations import OBSERVATION_KINDS
 from ultrarl.run import FINAL_SUFFIX, SUMMARY_METRICS
 from ultrarl.stats import summarize
 
-from .test_train import CONFIG
+CONFIGS = Path(__file__).resolve().parents[1] / "configs"
+EXPERIMENTS = ("main", "ablations", "sensitivity", "followups", "encoders")
 
 
-def _fake_results(root, seeds=(0, 1, 2)):
-    exp = load_experiment(CONFIG)
-    rng = np.random.default_rng(0)
-    rows = []
+def _fake_experiment(root: Path, name: str, rng: np.random.Generator, seeds=(0, 1, 2)) -> None:
+    exp = load_experiment(CONFIGS / f"{name}.yaml")
     names = [(m.name, m.display_name) for m in exp.methods]
     names += [(m.name + FINAL_SUFFIX, m.display_name + FINAL_SUFFIX) for m in exp.learned_methods]
+    rows = []
     for setting in exp.eval_settings:
-        for name, display in names:
+        for method, display in names:
             for seed in seeds:
-                row = {"setting": setting.name, "method": name, "display_name": display, "seed": seed}
+                row = {"setting": setting.name, "method": method, "display_name": display, "seed": seed}
                 row.update({k: float(rng.uniform(0.1, 0.9)) for k in SUMMARY_METRICS})
                 rows.append(row)
     per_seed = pd.DataFrame(rows)
-    main_dir = root / "main"
-    (main_dir / "curves").mkdir(parents=True)
-    per_seed.to_csv(main_dir / "eval_per_seed.csv", index=False)
+    out = root / name
+    (out / "curves").mkdir(parents=True)
+    per_seed.to_csv(out / "eval_per_seed.csv", index=False)
     summarize(per_seed, ["setting", "method", "display_name"], SUMMARY_METRICS).to_csv(
-        main_dir / "eval_summary.csv", index=False
+        out / "eval_summary.csv", index=False
     )
+    episodes = np.arange(1000, 21000, 1000)
     for m in exp.learned_methods:
         for seed in seeds:
-            episodes = np.arange(1000, 21000, 1000)
             pd.DataFrame(
                 {
                     "method": m.name,
@@ -45,26 +48,64 @@ def _fake_results(root, seeds=(0, 1, 2)):
                     "train_like_fault_detected": rng.uniform(0.0, 1.0, episodes.size),
                     "heldout_long_success": rng.uniform(0.1, 0.9, episodes.size),
                 }
-            ).to_csv(main_dir / "curves" / f"{m.name}_seed{seed}.csv", index=False)
-    return per_seed
+            ).to_csv(out / "curves" / f"{m.name}_seed{seed}.csv", index=False)
 
 
-def test_report_writes_all_artifacts_and_valid_macros(tmp_path):
-    _fake_results(tmp_path / "results")
-    report.main(["--results", str(tmp_path / "results"), "--paper", str(tmp_path / "paper")])
-    paper = tmp_path / "paper"
+@pytest.fixture(scope="module")
+def generated(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("report")
+    rng = np.random.default_rng(0)
+    for name in EXPERIMENTS:
+        _fake_experiment(tmp / "results", name, rng)
+    pd.DataFrame(
+        [
+            {"observation": kind, "setting": s, "unseen_fraction": float(rng.uniform()), "points": 100}
+            for kind in OBSERVATION_KINDS
+            for s in ("heldout_long", "heldout_xlong")
+        ]
+    ).to_csv(tmp / "results" / "observation_coverage.csv", index=False)
+    report.main(["--results", str(tmp / "results"), "--paper", str(tmp / "paper")])
+    return tmp / "paper"
+
+
+def test_report_writes_every_figure_and_table(generated):
     for name in ("length_generalization", "learning_curves", "cue_selectivity", "policy_churn"):
-        assert (paper / "figures" / f"{name}.pdf").exists()
-    for name in ("main_results", "main_results_final", "shift_results", "behaviour_heldout_long"):
-        text = (paper / "tables" / f"{name}.tex").read_text()
-        assert text.startswith("\\begin{tabular}") and text.rstrip().endswith("\\end{tabular}")
-    macros = (paper / "numbers.tex").read_text()
+        assert (generated / "figures" / f"{name}.pdf").exists()
+    for name in (
+        "main_results",
+        "main_results_final",
+        "shift_results",
+        "behaviour_heldout_long",
+        "behaviour_heldout_xlong",
+        "ablations_results",
+        "ablations_results_final",
+        "sensitivity_results",
+        "followup_results",
+        "encoder_results",
+    ):
+        text = (generated / "tables" / f"{name}.tex").read_text()
+        assert text.startswith("\\begin{tabular}") and text.rstrip().endswith("\\end{tabular}"), name
+
+
+def test_report_macros_are_well_formed_and_cover_every_experiment(generated):
+    macros = (generated / "numbers.tex").read_text()
     defs = re.findall(r"\\csname ur@([^\\]+)\\endcsname\{([^}]*)\}", macros)
     keys = {k for k, _ in defs}
-    assert "main/ma_inv/heldout_long/success" in keys
-    assert "diff/ma_inv-ma_abs/heldout_long/success/p" in keys
-    assert "main/ma_inv/collapse_norepair_rate/pct" in keys
     assert len(keys) == len(defs), "duplicate macro keys"
+    for key in (
+        "main/ma_inv/heldout_long/success",
+        "diff/ma_inv-ma_abs/heldout_long/success/pholm",
+        "main/ma_inv/collapse_norepair_rate/pct",
+        "main/ma_inv/collapse_rate/lo",
+        "ablations/no_cue_terms/collapse_rate",
+        "abl/ma_inv-no_cue_terms/heldout_xlong/success/p",
+        "sens/ma_inv_polyak-ma_abs_polyak/heldout_xlong/success",
+        "followups/ma_repair/collapse_rate/pct",
+        "diff/ma_repair@final-ma_inv@final/heldout_long/success",
+        "diff/ma_abs_nopos-ma_abs/heldout_xlong/success",
+        "coverage/absolute_nopos/heldout_xlong/unseen_rate/pct",
+    ):
+        assert key in keys, key
     for _, value in defs:
         assert value == "--" or re.fullmatch(r"-?[0-9.]+(\\%)?|<0\.001", value), value
 
@@ -86,3 +127,9 @@ def test_curve_stats_separates_never_check_from_detect_without_repair():
     assert stats["main/m/collapse_nevercheck_rate"] == pytest.approx(0.25)
     assert stats["main/m/seeds_peak_above_half"] == "1"
     assert stats["main/m/seeds_selected_above_half"] == "0"
+
+
+def test_holm_adjustment_applies_only_to_primary_comparisons():
+    from ultrarl.stats import holm
+
+    assert holm([0.01, 0.04, 0.03]) == pytest.approx([0.03, 0.06, 0.06])

@@ -1,0 +1,28 @@
+env:
+  train_depth_range:
+  - 3
+  - 6
+  max_depth: 9
+  p_fault: 0.8
+  budget_extra: 6
+  fault_profile: middle
+  fault_peak_weight: 5.0
+  use_risk_hints: true
+  hint_reliability: 0.85
+  hint_false_positive: 0.15
+  verify_cost: 1
+  revise_cost: 1
+  think_cost: 1
+  correct_reward: 1.0
+  incorrect_reward: -1.2
+  invalid_action_penalty: 0.1
+  step_penalty: 0.04
+  cost_adjust_weight: 0.05
+  naive_progress_bonus: 0.015
+  naive_verify_bonus: 0.02
+  ma_safe_verify_bonus: 0.02
+  ma_fault_verify_bonus: 0.25
+  ma_waste_verify_penalty: 0.06
+  ma_opaque_penalty: 0.3
+  ma_hint_verify_bonus: 0.18
+  ma_low_hint_penalty: 0.02

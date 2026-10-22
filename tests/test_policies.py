@@ -54,6 +54,15 @@ def test_budget_aware_never_checks_when_repair_is_unaffordable():
     assert m["verify_count"] == 0.0
 
 
+def test_budget_aware_accounts_for_action_costs():
+    # slack 3 < verify (2) + revise (1) + redo (1): a check could never be followed by a repair
+    cfg = EnvConfig(budget_extra=3, verify_cost=2)
+    m = evaluate(heuristic_act("budget_aware_0"), cfg, EvalSetting("t", (3, 9)), 0, 200)
+    assert m["verify_count"] == 0.0
+    m = evaluate(heuristic_act("budget_aware_0"), cfg.replace(budget_extra=4), EvalSetting("t", (3, 9)), 0, 200)
+    assert m["verify_count"] > 0.0
+
+
 def test_unknown_heuristic():
     with pytest.raises(ValueError):
         build_heuristic("oracle", 0)

@@ -32,3 +32,22 @@ def test_unknown_override_is_rejected(tmp_path):
     bad.write_text(yaml.safe_dump(raw))
     with pytest.raises(KeyError):
         load_experiment(bad)
+
+
+@pytest.mark.parametrize(
+    "mutate, error",
+    [
+        (lambda raw: raw.update(typo_section={}), KeyError),
+        (lambda raw: raw["evaluation"]["settings"][0].update(depth_rang=[1, 2]), KeyError),
+        (lambda raw: raw["methods"][0].update(kind="oracle"), ValueError),
+        (lambda raw: raw["methods"].append({"name": "not_a_heuristic", "kind": "heuristic"}), ValueError),
+        (lambda raw: raw["methods"][-1].update(env_overrides={"observation": "polar"}), ValueError),
+    ],
+)
+def test_config_typos_fail_at_load_time(tmp_path, mutate, error):
+    raw = yaml.safe_load(CONFIGS[0].read_text())
+    mutate(raw)
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(yaml.safe_dump(raw))
+    with pytest.raises(error):
+        load_experiment(bad)

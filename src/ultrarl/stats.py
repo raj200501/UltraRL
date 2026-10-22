@@ -1,11 +1,12 @@
 """Across-seed summary statistics.
 
 Intervals are Student-t intervals of the mean over independent seeds. With 10
-seeds a percentile bootstrap undercovers noticeably (roughly 80-90% nominal-95%
-coverage for the bimodal outcomes that policy churn produces), so we use t.
-Paired comparisons (methods evaluated on identical episodes for each seed) also
-report the number of seeds favouring each side and an exact sign-flip
-permutation p-value.
+seeds a plain percentile bootstrap is noticeably narrower than a t-interval (it
+uses the 1/n variance and normal quantiles), so it undercovers even for normal
+data; t-intervals are the standard small-sample choice. Paired comparisons
+(methods evaluated on identical episodes for each seed) also report the number
+of seeds favouring each side and an exact sign-flip permutation p-value; a
+pre-declared family of primary comparisons is Holm-adjusted.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from scipy import stats as sps
 PROBABILITY_METRICS = {
     "success",
     "fault_detected",
-    "repair_success",
+    "success_given_fault",
     "success_given_detected",
     "clean_success",
     "verify_precision",
@@ -28,6 +29,7 @@ PROBABILITY_METRICS = {
     "verify_rate_cue1",
     "incomplete_commit",
     "voluntary_incomplete_commit",
+    "commit_at_start",
 }
 
 
@@ -95,3 +97,15 @@ def paired_difference(
         "n_negative": int((diff < 0).sum()),
         "p_value": sign_flip_pvalue(diff),
     }
+
+
+def holm(p_values: list[float]) -> list[float]:
+    """Holm-Bonferroni adjusted p-values (same order as the input)."""
+    order = np.argsort(p_values)
+    m = len(p_values)
+    adjusted = np.empty(m)
+    running = 0.0
+    for rank, index in enumerate(order):
+        running = max(running, min(1.0, (m - rank) * p_values[index]))
+        adjusted[index] = running
+    return adjusted.tolist()

@@ -1,6 +1,6 @@
 PYTHON ?= python
 WORKERS ?= 4
-EXPERIMENTS := main ablations sensitivity followups
+EXPERIMENTS := main ablations sensitivity followups encoders
 
 .PHONY: install test lint smoke report paper experiments reproduce equivalence clean $(EXPERIMENTS)
 
@@ -11,8 +11,8 @@ test:
 	$(PYTHON) -m pytest
 
 lint:
-	ruff check src tests scripts
-	ruff format --check src tests scripts
+	$(PYTHON) -m ruff check src tests scripts
+	$(PYTHON) -m ruff format --check src tests scripts
 
 smoke:  ## ~30 s end-to-end run of the whole pipeline in a scratch directory
 	rm -rf results/smoke

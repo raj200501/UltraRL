@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from ultrarl.stats import paired_difference, t_interval  # noqa: E402
+from ultrarl.stats import holm, paired_difference, t_interval  # noqa: E402
 
 # Categorical slots in fixed order (one hue per reward scheme); observation
 # encoder is a secondary encoding (line style / hatch), heuristics are neutral.
@@ -258,12 +258,13 @@ def table_shifts(summary: pd.DataFrame, out: Path) -> None:
     (out / "shift_results.tex").write_text(latex_table(header, rows, "l" + "c" * len(SHIFTS)), encoding="utf-8")
 
 
-def table_ablation(summary: pd.DataFrame, out: Path, name: str = "ablation_results") -> None:
+def table_ablation(summary: pd.DataFrame, out: Path, name: str = "ablation_results", suffix: str = "") -> None:
     rows = []
-    for m in [m for m in summary.method.drop_duplicates() if not m.endswith(FINAL)]:
+    for base in [m for m in summary.method.drop_duplicates() if not m.endswith(FINAL)]:
+        m = base + suffix
         rows.append(
             [
-                display(summary, m),
+                display(summary, base),
                 fmt(row(summary, "train_like", m), "success"),
                 fmt(row(summary, "heldout_long", m), "success"),
                 fmt(row(summary, "heldout_xlong", m), "success"),
@@ -294,13 +295,25 @@ def curve_stats(
     out: dict[str, float | str] = {}
     late = curves[curves.episode > burn_in]
     for method, sub in late.groupby("method"):
-        collapsed = sub.train_like_success <= COLLAPSE_THRESHOLD
-        detect = sub.train_like_fault_detected
-        out[f"{prefix}/{method}/collapse_rate"] = float(collapsed.mean())
-        out[f"{prefix}/{method}/collapse_nevercheck_rate"] = float(
-            (collapsed & (detect < NEVER_CHECK_DETECTION)).mean()
+        sub = sub.assign(
+            collapsed=sub.train_like_success <= COLLAPSE_THRESHOLD,
+            detect=sub.train_like_fault_detected,
         )
-        out[f"{prefix}/{method}/collapse_norepair_rate"] = float((collapsed & (detect >= 0.5)).mean())
+        sub = sub.assign(
+            nevercheck=sub.collapsed & (sub.detect < NEVER_CHECK_DETECTION),
+            norepair=sub.collapsed & (sub.detect >= 0.5),
+        )
+        for name in ("collapsed", "nevercheck", "norepair"):
+            key = {
+                "collapsed": "collapse_rate",
+                "nevercheck": "collapse_nevercheck_rate",
+                "norepair": "collapse_norepair_rate",
+            }
+            per_seed_rate = sub.groupby("seed")[name].mean().to_numpy(dtype=float)
+            low, high = t_interval(per_seed_rate)
+            out[f"{prefix}/{method}/{key[name]}"] = float(sub[name].mean())
+            out[f"{prefix}/{method}/{key[name]}/lo"] = max(0.0, low)
+            out[f"{prefix}/{method}/{key[name]}/hi"] = min(1.0, high)
         jumps = sub.sort_values("episode").groupby("seed").train_like_success.apply(lambda x: x.diff().abs().mean())
         out[f"{prefix}/{method}/mean_abs_change"] = float(jumps.mean())
         peaks = curves[curves.method == method].groupby("seed").train_like_success.max()
@@ -345,13 +358,31 @@ COMPARISONS = [
 ]
 
 
+# Pre-declared primary comparisons (the paper's headline claims); their p-values are
+# Holm-adjusted as one family. All other comparisons are reported unadjusted.
+PRIMARY = [
+    ("ma_inv", "ma_abs", "heldout_long"),
+    ("ma_inv", "ma_abs", "heldout_xlong"),
+    ("ma_abs", "outcome_abs", "train_like"),
+    ("ma_inv", "outcome_inv", "train_like"),
+    ("ma_inv", "outcome_inv", "heldout_long"),
+]
+
+
 def key_numbers(per_seed: pd.DataFrame, comparisons: list[tuple[str, str, str]] = COMPARISONS) -> pd.DataFrame:
     """Paired (by seed) differences in success quoted in the text."""
     rows = []
     for a, b, setting in comparisons:
         d = paired_difference(per_seed, "success", a, b, setting)
-        rows.append({"a": a, "b": b, "setting": setting, "metric": "success", **d})
-    return pd.DataFrame(rows)
+        rows.append(
+            {"a": a, "b": b, "setting": setting, "metric": "success", "primary": (a, b, setting) in PRIMARY, **d}
+        )
+    frame = pd.DataFrame(rows)
+    frame["p_holm"] = np.nan
+    primary = frame.primary
+    if primary.any():
+        frame.loc[primary, "p_holm"] = holm(frame.loc[primary, "p_value"].tolist())
+    return frame
 
 
 def comparison_macros(comparisons: pd.DataFrame, prefix: str = "diff") -> dict[str, float | str]:
@@ -363,6 +394,8 @@ def comparison_macros(comparisons: pd.DataFrame, prefix: str = "diff") -> dict[s
         out[f"{key}/n"] = str(int(c["n"]))
         p = c["p_value"]
         out[f"{key}/p"] = "<0.001" if p < 0.001 else f"{p:.3f}"
+        if c.get("primary", False):
+            out[f"{key}/pholm"] = f"{c['p_holm']:.3f}"
     return out
 
 
@@ -380,10 +413,19 @@ def table_behaviour(summary: pd.DataFrame, out: Path, setting: str = "heldout_lo
                 f"{r['fault_detected']:.2f}",
                 f"{r['success_given_detected']:.2f}",
                 f"{r['voluntary_incomplete_commit']:.2f}",
+                f"{r['commit_at_start']:.2f}",
             ]
         )
-    header = ["Method", "Checks/ep.", "Non-repair REVISE/ep.", "Detect", "Success $\\mid$ detect", "Early commit"]
-    (out / f"behaviour_{setting}.tex").write_text(latex_table(header, rows, "lccccc"), encoding="utf-8")
+    header = [
+        "Method",
+        "Checks/ep.",
+        "Non-repair REVISE/ep.",
+        "Detect",
+        "Success $\\mid$ detect",
+        "Early commit",
+        "Commit at $t{=}0$",
+    ]
+    (out / f"behaviour_{setting}.tex").write_text(latex_table(header, rows, "lcccccc"), encoding="utf-8")
 
 
 FOLLOWUP_REFERENCE = "ma_inv"
@@ -422,6 +464,27 @@ def table_followups(
     (out / "followup_results.tex").write_text(latex_table(header, rows, "lcccccc"), encoding="utf-8")
 
 
+def table_encoders(
+    main_summary: pd.DataFrame, encoders: pd.DataFrame, stats: dict[str, float | str], out: Path
+) -> None:
+    """The position-feature control next to the two main encoders (monitorability-aware reward)."""
+    combined = pd.concat([main_summary, encoders], ignore_index=True)
+    rows = []
+    for m, kind in (("ma_abs", "absolute"), ("ma_abs_nopos", "absolute_nopos"), ("ma_inv", "invariant")):
+        rows.append(
+            [
+                display(combined, m),
+                fmt(row(combined, "train_like", m), "success"),
+                fmt(row(combined, "heldout_long", m), "success"),
+                fmt(row(combined, "heldout_xlong", m), "success"),
+                f"{100 * stats[f'coverage/{kind}/heldout_xlong/unseen_rate']:.0f}\\%",
+                f"{row(combined, 'heldout_xlong', m)['commit_at_start']:.2f}",
+            ]
+        )
+    header = ["Encoder", "Success 3--6", "Success 7--9", "Success 10--14", "Unseen obs.\\ 10--14", "Commit at $t{=}0$"]
+    (out / "encoder_results.tex").write_text(latex_table(header, rows, "lccccc"), encoding="utf-8")
+
+
 MACRO_HEADER = r"""% Generated by `python -m ultrarl.report`; do not edit by hand.
 % \val{exp/method/setting/metric} -> mean over seeds; \ci{...} -> mean [95% bootstrap CI].
 \makeatletter
@@ -458,7 +521,7 @@ def write_macros(path: Path, summaries: dict[str, pd.DataFrame], extras: dict[st
             lines.append(f"\\expandafter\\def\\csname ur@{key}\\endcsname{{{value}}}")
             continue
         lines.append(_macro(key, value))
-        if key.endswith("_rate"):
+        if key.endswith(("_rate", "_rate/lo", "_rate/hi")):
             lines.append(_pct_macro(key, value))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -498,7 +561,9 @@ def main(argv: list[str] | None = None) -> None:
             summaries[name] = pd.read_csv(path)
             table_ablation(summaries[name], tables, name=f"{name}_results")
     if "ablations" in summaries:
+        table_ablation(summaries["ablations"], tables, name="ablations_results_final", suffix=FINAL)
         ablation_seeds = pd.read_csv(results / "ablations" / "eval_per_seed.csv")
+        extras.update(curve_stats(load_curves(results / "ablations"), ablation_seeds, prefix="ablations"))
         variants = [m for m in summaries["ablations"].method.unique() if m != "ma_inv" and not m.endswith(FINAL)]
         pairs = [("ma_inv", m, s) for m in variants for s in ("train_like", "heldout_long", "heldout_xlong")]
         extras.update(comparison_macros(key_numbers(ablation_seeds, pairs), prefix="abl"))
@@ -525,6 +590,15 @@ def main(argv: list[str] | None = None) -> None:
         followup_seeds = pd.read_csv(followup_dir / "eval_per_seed.csv")
         extras.update(curve_stats(load_curves(followup_dir), followup_seeds, prefix="followups"))
         table_followups(summary, summaries["followups"], extras, tables)
+    encoder_dir = results / "encoders"
+    if (encoder_dir / "eval_summary.csv").exists():
+        summaries["encoders"] = pd.read_csv(encoder_dir / "eval_summary.csv")
+        joint = pd.concat([per_seed, pd.read_csv(encoder_dir / "eval_per_seed.csv")], ignore_index=True)
+        lengths = ("train_like", "heldout_long", "heldout_xlong")
+        pairs = [("ma_abs_nopos", ref, s) for ref in ("ma_abs", "ma_inv") for s in lengths]
+        extras.update(comparison_macros(key_numbers(joint, pairs)))
+        if "coverage/absolute_nopos/heldout_xlong/unseen_rate" in extras:
+            table_encoders(summary, summaries["encoders"], extras, tables)
     write_macros(paper / "numbers.tex", summaries, extras)
     print(f"[report] wrote figures to {figures}, tables to {tables} and {paper / 'numbers.tex'}")
 

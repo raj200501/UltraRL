@@ -2,16 +2,15 @@
 
     python scripts/check_legacy_equivalence.py
 
-Extracts the original environment (`src/envs.py` at commit 81ec8cb) from git
-history, plays the same random action sequences in both implementations, and
-compares action masks, rewards, termination, success and (non-terminal)
-observations step by step for every reward scheme.
+The original environment (``src/envs.py`` and its default config at commit
+81ec8cb) is vendored under ``scripts/legacy/``. The script plays the same random
+action sequences in both implementations and compares action masks, rewards,
+termination, success and (non-terminal) observations step by step, for every
+reward scheme with and without the per-action cost.
 """
 
 import importlib.util
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +19,7 @@ import yaml
 from ultrarl.config import EnvConfig
 from ultrarl.env import ChainEnv
 
-LEGACY_COMMIT = "81ec8cb"
+LEGACY_DIR = Path(__file__).resolve().parent / "legacy"
 RENAMED = {
     "hint_reliability": "cue_hit_rate",
     "hint_false_positive": "cue_false_positive_rate",
@@ -32,19 +31,17 @@ DROPPED = {"use_risk_hints", "invalid_action_penalty"}  # always on / never trig
 
 
 def load_legacy():
-    def show(path: str) -> str:
-        return subprocess.run(
-            ["git", "show", f"{LEGACY_COMMIT}:{path}"], check=True, capture_output=True, text=True
-        ).stdout
-
-    tmp = Path(tempfile.mkdtemp())
-    (tmp / "envs.py").write_text(show("src/envs.py"))
-    spec = importlib.util.spec_from_file_location("legacy_envs", tmp / "envs.py")
+    spec = importlib.util.spec_from_file_location("legacy_envs", LEGACY_DIR / "legacy_envs.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module  # dataclasses resolve annotations through sys.modules
     spec.loader.exec_module(module)
-    config = yaml.safe_load(show("configs/default.yaml"))["env"]
+    config = yaml.safe_load((LEGACY_DIR / "legacy_env_config.yaml").read_text())["env"]
     return module.ProcessReasoningEnv, config
+
+
+def check(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
 
 
 def main(episodes: int = 3000) -> int:
@@ -60,11 +57,14 @@ def main(episodes: int = 3000) -> int:
                 depth_range = (3, 6) if ep % 2 else (7, 9)
                 o1, _ = old.reset(seed=ep, depth_range=depth_range)
                 o2 = new.reset(seed=ep, depth_range=depth_range)
-                assert np.allclose(o1, o2) and old.fault_index == new.fault_index and old.risk_hints == new.cues
+                check(np.allclose(o1, o2), f"initial observations differ in episode {ep}")
+                check(
+                    old.fault_index == new.fault_index and old.risk_hints == new.cues, f"task differs in episode {ep}"
+                )
                 done = False
                 while not done:
                     mask = old.available_actions()
-                    assert (mask == new.action_mask()).all()
+                    check(bool((mask == new.action_mask()).all()), f"action masks differ in episode {ep}")
                     valid = np.flatnonzero(mask)
                     weights = np.where(valid == 0, 3.0, 1.0)  # favour THINK so episodes reach the end
                     action = int(policy_rng.choice(valid, p=weights / weights.sum()))
@@ -75,7 +75,7 @@ def main(episodes: int = 3000) -> int:
                     if not (np.isclose(r1, r2) and d1 == d2 and (d1 or np.allclose(o1, o2))):
                         mismatches += 1
                     done = d1
-                assert old.success == new.success
+                check(old.success == new.success, f"success differs in episode {ep}")
     print(f"compared {steps} steps over {6 * episodes} episodes: {mismatches} mismatches")
     return 1 if mismatches else 0
 

@@ -69,3 +69,17 @@ def test_smoke_and_full_outputs_cannot_be_mixed(tmp_path):
     main(["--config", str(CONFIG), "--out", str(out), "--smoke", "--workers", "1", "--stage", "train"])
     with pytest.raises(RuntimeError, match="smoke"):
         main(["--config", str(CONFIG), "--out", str(out), "--workers", "1", "--stage", "eval"])
+
+
+def test_eval_stage_refuses_checkpoints_from_a_different_config(tmp_path):
+    import yaml
+
+    out = tmp_path / "out"
+    main(["--config", str(CONFIG), "--out", str(out), "--smoke", "--workers", "1", "--stage", "train"])
+    raw = yaml.safe_load(CONFIG.read_text())
+    raw["env"]["budget_extra"] = 3
+    changed = tmp_path / "changed.yaml"
+    changed.write_text(yaml.safe_dump(raw))
+    with pytest.raises(RuntimeError, match="budget_extra"):
+        main(["--config", str(changed), "--out", str(out), "--smoke", "--workers", "1", "--stage", "eval"])
+    assert (out / "config.yaml").read_text() == CONFIG.read_text()  # provenance untouched

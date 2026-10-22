@@ -9,17 +9,25 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.12"]
+        include:
+          - {python-version: "3.10", deps: latest}
+          - {python-version: "3.12", deps: latest}
+          - {python-version: "3.13", deps: locked}  # the exact versions that produced results/
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - name: Install (CPU-only torch)
+      - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          if [ "${{ matrix.deps }}" = "locked" ]; then
+            pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+            pip install -r requirements-lock.txt
+          else
+            pip install torch --index-url https://download.pytorch.org/whl/cpu
+          fi
           pip install -e ".[dev]"
       - name: Lint
         run: |
@@ -29,3 +37,8 @@ jobs:
         run: pytest
       - name: Smoke run of the full pipeline
         run: python -m ultrarl.run --config configs/main.yaml --out /tmp/smoke --smoke --workers 2
+      - name: Committed figures, tables and paper numbers match the saved results
+        if: matrix.deps == 'locked'
+        run: |
+          python -m ultrarl.report --results results --paper paper
+          git diff --exit-code -- paper/numbers.tex paper/tables results

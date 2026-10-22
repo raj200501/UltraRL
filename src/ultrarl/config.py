@@ -138,12 +138,42 @@ class ExperimentConfig:
         return env
 
 
+TOP_LEVEL_KEYS = {"name", "env", "train", "seeds", "methods", "evaluation", "smoke"}
+EVALUATION_KEYS = {"episodes", "settings", "curve_settings"}
+METHOD_KEYS = {"name", "display_name", "kind", "env_overrides", "train_overrides"}
+SETTING_KEYS = {"name", "depth_range", "env_overrides"}
+METHOD_KINDS = ("heuristic", "dqn")
+
+
+def _check_keys(raw: dict[str, Any], allowed: set[str], where: str) -> None:
+    unknown = set(raw) - allowed
+    if unknown:
+        raise KeyError(f"unknown keys in {where}: {sorted(unknown)} (allowed: {sorted(allowed)})")
+
+
 def _setting(raw: dict[str, Any]) -> EvalSetting:
-    raw = dict(raw)
-    return EvalSetting(
-        name=raw.pop("name"),
-        depth_range=tuple(raw.pop("depth_range")),
-        env_overrides=raw.pop("env_overrides", {}),
+    _check_keys(raw, SETTING_KEYS, f"setting {raw.get('name')!r}")
+    low, high = raw["depth_range"]
+    if not 1 <= low <= high:
+        raise ValueError(f"invalid depth_range {raw['depth_range']} in setting {raw['name']!r}")
+    return EvalSetting(name=raw["name"], depth_range=(int(low), int(high)), env_overrides=raw.get("env_overrides", {}))
+
+
+def _method(raw: dict[str, Any]) -> Method:
+    _check_keys(raw, METHOD_KEYS, f"method {raw.get('name')!r}")
+    kind = raw.get("kind", "dqn")
+    if kind not in METHOD_KINDS:
+        raise ValueError(f"method {raw['name']!r}: kind must be one of {METHOD_KINDS}, got {kind!r}")
+    if kind == "heuristic":
+        from ultrarl.policies import build_heuristic
+
+        build_heuristic(raw["name"], 0)  # raises for unknown heuristics
+    return Method(
+        name=raw["name"],
+        display_name=raw.get("display_name", raw["name"]),
+        kind=kind,
+        env_overrides=raw.get("env_overrides", {}),
+        train_overrides=raw.get("train_overrides", {}),
     )
 
 
@@ -156,18 +186,11 @@ def load_experiment(path: str | Path, *, smoke: bool = False) -> ExperimentConfi
                 raw[section] = {**raw[section], **overrides}
             else:
                 raw[section] = overrides
+    _check_keys(raw, TOP_LEVEL_KEYS, str(path))
+    _check_keys(raw["evaluation"], EVALUATION_KEYS, f"{path}: evaluation")
     env = EnvConfig(**raw.get("env", {}))
     train = TrainConfig(**raw.get("train", {}))
-    methods = tuple(
-        Method(
-            name=m["name"],
-            display_name=m.get("display_name", m["name"]),
-            kind=m.get("kind", "dqn"),
-            env_overrides=m.get("env_overrides", {}),
-            train_overrides=m.get("train_overrides", {}),
-        )
-        for m in raw["methods"]
-    )
+    methods = tuple(_method(m) for m in raw["methods"])
     names = [m.name for m in methods]
     if len(names) != len(set(names)):
         raise ValueError(f"duplicate method names in {path}")

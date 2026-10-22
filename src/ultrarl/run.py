@@ -49,8 +49,9 @@ SUMMARY_METRICS = [
     "nonrepair_revise_count",
     "incomplete_commit",
     "voluntary_incomplete_commit",
+    "commit_at_start",
     "fault_detected",
-    "repair_success",
+    "success_given_fault",
     "success_given_detected",
     "clean_success",
     "verify_precision",
@@ -81,7 +82,9 @@ def _eval_job(job: tuple[str, bool, str, int, str]) -> list[dict[str, Any]]:
     variants = []
     if method.kind == "dqn":
         for which, suffix in (("best", ""), ("final", FINAL_SUFFIX)):
-            agent, _ = DQNAgent.load(checkpoint_path(Path(out_dir), method, seed, which))
+            path = checkpoint_path(Path(out_dir), method, seed, which)
+            check_checkpoint_config(exp, method, path)
+            agent, _ = DQNAgent.load(path)
             variants.append((method.name + suffix, method.display_name + suffix, lambda a=agent: greedy_act(a)))
     else:
 
@@ -128,20 +131,25 @@ def _config_mismatches(current: Any, recorded: dict[str, Any]) -> list[str]:
     return problems
 
 
+def check_checkpoint_config(exp: ExperimentConfig, method: Method, path: Path) -> None:
+    """Raise if the checkpoint at ``path`` was trained with a different config than ``exp`` specifies."""
+    _, meta = DQNAgent.load(path)
+    problems = _config_mismatches(exp.method_train(method), meta["train_config"])
+    problems += _config_mismatches(exp.method_env(method), meta["env_config"])
+    if problems:
+        raise RuntimeError(
+            f"{path} was trained with a different config ({'; '.join(problems)}). "
+            "Use --retrain to overwrite it or a fresh --out directory."
+        )
+
+
 def run_complete(exp: ExperimentConfig, out: Path, method: Method, seed: int) -> bool:
     """True if a finished run exists; raises if it was trained with a different config."""
     files = [checkpoint_path(out, method, seed, "final"), checkpoint_path(out, method, seed, "best")]
     files.append(curve_path(out, method, seed))
     if not all(path.exists() for path in files):
         return False
-    _, meta = DQNAgent.load(files[0])
-    problems = _config_mismatches(exp.method_train(method), meta["train_config"])
-    problems += _config_mismatches(exp.method_env(method), meta["env_config"])
-    if problems:
-        raise RuntimeError(
-            f"{files[0]} was trained with a different config ({'; '.join(problems)}). "
-            "Use --retrain to overwrite it or a fresh --out directory."
-        )
+    check_checkpoint_config(exp, method, files[0])
     return True
 
 
@@ -178,7 +186,13 @@ def write_manifest(exp: ExperimentConfig, out: Path) -> pd.DataFrame:
                     }
                 )
     frame = pd.DataFrame(rows)
-    frame.to_csv(out / "train_runs.csv", index=False)
+    manifest = out / "train_runs.csv"
+    if manifest.exists() and not frame.empty:
+        # keep wall times recorded before checkpoints stored them in their metadata
+        previous = pd.read_csv(manifest).set_index(["method", "seed"])["wall_seconds"]
+        recorded = frame.set_index(["method", "seed"])["wall_seconds"]
+        frame["wall_seconds"] = recorded.fillna(previous.reindex(recorded.index)).to_numpy()
+    frame.to_csv(manifest, index=False)
     return frame
 
 
@@ -203,9 +217,11 @@ def evaluate_all(exp: ExperimentConfig, config_path: str, smoke: bool, out: Path
 
 
 def _check_output_dir(out: Path, config_path: str, smoke: bool, retrain: bool) -> None:
-    """Refuse to mix smoke and full outputs; record the config the outputs belong to.
+    """Refuse to mix smoke and full outputs, then record the config the outputs belong to.
 
-    Individual checkpoints are additionally checked against the config in ``run_complete``.
+    Every checkpoint is additionally checked against the config before it is
+    skipped (training) or evaluated, so a changed config cannot silently reuse
+    stale agents. Provenance files are only written once these checks pass.
     """
     text = Path(config_path).read_text(encoding="utf-8")
     info = {"config_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "smoke": smoke}
@@ -215,10 +231,17 @@ def _check_output_dir(out: Path, config_path: str, smoke: bool, retrain: bool) -
         if recorded.get("smoke") != smoke:
             kind = "smoke" if recorded.get("smoke") else "full"
             raise RuntimeError(f"{out} holds {kind} outputs; use another --out (or --retrain)")
+        if recorded.get("config_sha256") != info["config_sha256"]:
+            print(f"[run] note: {config_path} differs from the config recorded in {out}", flush=True)
+
+
+def _record_provenance(out: Path, config_path: str, smoke: bool) -> None:
+    text = Path(config_path).read_text(encoding="utf-8")
+    info = {"config_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "smoke": smoke}
     target = out / "config.yaml"
     if not (target.exists() and target.resolve() == Path(config_path).resolve()):
         target.write_text(text, encoding="utf-8")
-    info_path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
+    (out / "run_info.json").write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -240,6 +263,7 @@ def main(argv: list[str] | None = None) -> None:
         train_all(exp, args.config, args.smoke, out, args.workers, args.retrain)
     if args.stage in ("eval", "all"):
         evaluate_all(exp, args.config, args.smoke, out, args.workers)
+    _record_provenance(out, args.config, args.smoke)
     print(f"[run] {exp.name} finished in {time.time() - start:.0f}s -> {out}", flush=True)
 
 
