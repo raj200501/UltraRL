@@ -39,8 +39,8 @@ def _fake_experiment(root: Path, name: str, rng: np.random.Generator, seeds=(0, 
     )
     episodes = np.arange(1000, 21000, 1000)
     pd.DataFrame(
-        [{"method": m.name, "seed": seed, "selected_episode": int(rng.choice(episodes))} for m in exp.learned_methods
-         for seed in seeds]
+        [{"method": m.name, "seed": seed, "selected_episode": int(rng.choice(episodes)), "wall_seconds": 240.0,
+          "selection_success": float(rng.uniform())} for m in exp.learned_methods for seed in seeds]
     ).to_csv(out / "train_runs.csv", index=False)  # fmt: skip
     for m in exp.learned_methods:
         for seed in seeds:
@@ -189,3 +189,16 @@ def test_holm_adjustment_applies_only_to_primary_comparisons():
     primary = frame[frame.primary]
     assert len(primary) == len(report.PRIMARY) and frame.loc[~frame.primary, "p_holm"].isna().all()
     assert np.allclose(primary.p_holm, holm(primary.p_value.tolist()))
+
+
+def test_unrepaired_loss_counts_seeds_without_detections_as_zero():
+    per_seed = pd.DataFrame(
+        {
+            "method": ["m", "m"],
+            "setting": ["s", "s"],
+            "fault_rate": [0.8, 0.8],
+            "fault_detected": [0.5, 0.0],
+            "success_given_detected": [0.5, np.nan],
+        }
+    )
+    assert report.unrepaired_loss_macros(per_seed, "x")["x/m/s/unrepaired_rate"] == pytest.approx(0.1)

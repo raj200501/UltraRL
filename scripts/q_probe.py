@@ -11,8 +11,8 @@ Each checkpoint is rolled out greedily on training-length evaluation episodes.
   environment (episodes are deterministic once reset, so this is exact).
 * As calibration baselines we record the learned value of the greedy action and
   the discounted return that actually followed (a) at the first decision point
-  of every episode, where nothing hidden can differ between episodes that look
-  alike, and (b) at every decision point where the running value is correct and
+  of every episode, where the hidden state follows the task prior and the
+  agent's own history cannot create aliasing, and (b) at every decision point where the running value is correct and
   no caught fault is waiting to be repaired ("on track"; this conditions on
   hidden state, so it is only a secondary baseline).
 * We also record how often an observation on the THINK branch, while the running

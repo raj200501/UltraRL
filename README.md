@@ -6,7 +6,7 @@
 
 Raj Kashikar · [paper (PDF)](paper/main.pdf)
 
-> **In one sentence:** in an exact testbed for budgeted self-verification, a small RL agent's checking generalizes to longer problems only if its observations mean the same thing at every length, and its habit of catching faults without fixing them comes from an observation that hides whether a fix is still pending.
+> **In one sentence:** in an exact testbed for budgeted self-verification, a small RL agent's checking generalizes to longer problems only if its observations mean the same thing at every length, and its habit of catching faults without fixing them disappears once the observation records whether a fix is still pending.
 
 Reasoning models increasingly check and revise their own steps. This project studies a narrow version of that behaviour that can be measured exactly: *when an agent has a fixed budget, does it learn which steps are worth checking, and does what it learns transfer to longer problems?*
 
@@ -32,15 +32,16 @@ The monitorability-aware reward is a toy proxy for keeping a trajectory locally 
 - *absolute* (the first version's encoder): position and depth as fractions of a fixed maximum, the budget as a fraction of the total, slack scaled by the total budget, and the unchecked stretch scaled by a fixed constant, so the same situation looks different on a longer chain;
 - *invariant*: whether it is at the start or the end, the clipped budget slack, the clipped unchecked stretch, the cue, whether it just undid a step, and the last check result, so the same situation looks the same at every length.
 
-Neither records whether a caught fault has been repaired; one follow-up adds that bit.
+Neither records whether a caught fault has been repaired. One follow-up adds that bit; another adds the last 8 actions and check results instead.
 
 <p align="center"><img src="paper/figures/length_generalization.png" width="760" alt="Success versus chain length for each reward and observation encoder"></p>
 
 ## Findings
 
-- **Setup:** 10 seeds per condition, Double DQN agents with about 5k parameters, chains up to 2.3× longer than in training.
+- **Setup:** 10 seeds per condition, Double DQN agents with about 5k parameters (7.6k with the action-history input), chains up to 2.3× longer than in training.
 - **Statistics:** 95% Student-t intervals over seeds. Comparisons are paired by seed and use exact sign-flip tests. Six headline comparisons, chosen after seeing the results, are Holm-corrected; other p-values are exploratory.
 - **Checkpoints:** learned agents use the checkpoint selected on *training-length* validation. Main results are also reported for the last checkpoint.
+- **Collapse:** a *late* checkpoint is one evaluated after episode 5,000 of 20,000; it has *collapsed* if its training-length success is at most 0.35 (never checking scores 0.20).
 
 | Success rate (selected checkpoints unless noted) | train lengths 3–6 | held-out 7–9 | held-out 10–14 |
 |---|---|---|---|
@@ -67,19 +68,19 @@ Neither records whether a caught fault has been repaired; one follow-up adds tha
 1. **Length generalization depends mainly on the observation encoder.**
    - The original encoder's features depend on chain length. In rollouts of the hand-coded policies, 100% of held-out observations never occur exactly in a large sample of training-length rollouts, and every reward ends up *below* never-checking on lengths 10–14, mostly by committing before executing a single step.
    - A length-invariant encoder (2–5% novel) keeps 0.86 at lengths 7–9: a difference of −0.02 [−0.05, 0.01] from a hand-coded checker, and below an exact planner that knows the chain length (0.94).
-   - Removing only the two position features is not enough (98% still novel; 0.14 at 10–14). The remaining length-normalised features also change meaning with length.
+   - Removing only the two position features is not enough (98% still novel; 0.14 at 10–14). Two kinds of features cause trouble: ones whose mapping depends on chain length (budget fraction, slack scaled by the total budget), and fixed-meaning ones that take values long chains never show in training (the gap scaled by a constant). The invariant encoder drops the first kind and clips the second.
 2. **Every reward shows a "detect but don't repair" failure; one bit of missing state removes it.**
    - Late checkpoints that catch faults and then fail to fix them occur under outcome-only (15%), naive (29%) and monitorability-aware (21%) rewards. This is a learning failure rather than reward hacking: repairing is always worth more than any detection bonus.
    - The observation does not record whether a caught fault is still unrepaired, so continuing past it looks like being on track.
-   - Adding one bit that records exactly that removes the failure under all three rewards (0% of late checkpoints) and makes the greedy choice stable. Under the monitorability-aware reward the last checkpoint then reaches 0.89 at lengths 7–9 and 0.83 at 10–14 (without the bit: 0.63 and 0.52), level with the cue-triggered heuristic. Selected checkpoints on 10–14 look worse (−0.14 [−0.26, −0.01]), a selection artifact: with the bit, training-length validation saturates and selection picks checkpoints that over-check.
-   - Agents shown their last 8 actions instead learn this state themselves: no collapse under any reward and 0.97 training-length success. But the window also changes with length (42% of observations at 10–14 never occur in training), and they generalize poorly (0.22–0.41 at 10–14).
+   - Adding one bit that records exactly that removes the failure under all three rewards (0% of late checkpoints) and makes the greedy choice stable. Under the monitorability-aware reward the last checkpoint then reaches 0.89 at lengths 7–9 and 0.83 at 10–14 (without the bit: 0.63 and 0.52), within an unresolved −0.02 [−0.08, 0.04] of the cue-triggered heuristic (a comparison made after seeing the long-chain results). Selected checkpoints on 10–14 look worse (−0.14 [−0.26, −0.01]), most likely a selection artifact: with the bit, training-length validation saturates and selection picks checkpoints that over-check.
+   - Agents shown their last 8 actions instead learn this state themselves: no collapse under any reward and 0.97 training-length success. But long chains produce windows that cannot occur in training, such as seven or more consecutive THINKs (42% of observations at 10–14 are unseen); the agents over-check, run out of budget, and generalize poorly (0.22–0.41 at 10–14).
    - Paying the fault bonus at the repair step instead of at detection also removes the collapse among late checkpoints (1% [0, 2]), but we tried that only with the monitorability-aware reward.
-3. **Paying for checks helps agents find checking sooner and keep it, but mostly compensates for missing state.**
+3. **Paying for checks helps agents find checking sooner and keep it, partly by compensating for missing state.**
    - With invariant observations, 85% [76, 93] of outcome-only agents' late checkpoints (those after episode 5,000) collapse to low success; most of these still check but almost never catch a fault (the ones we inspected check only the final step). Under the monitorability-aware reward, 21% [10, 32] collapse.
    - Monitorability-aware agents first exceed 0.5 success by a median of episode 3,500 (outcome-only: 15,000). Of the checkpoints after that point, 24% collapse (outcome-only: 66%). The naive process reward (a step-correctness bonus plus a token check payment) is in between.
    - The contrast holds under three other DQN settings and with twice the training (5 seeds each): outcome-only agents collapse in 81–96% of late checkpoints, monitorability-aware agents in 17–22%.
-   - With the repair-pending bit, outcome-only collapse falls to 20%, and with the action history to 0%. With the bit, the two rewards are indistinguishable at selected checkpoints on held-out lengths; the check payment still shows up at the last checkpoint (0.37 vs 0.89 at 7–9).
-   - In ablations, every variant that keeps the per-action cost and pays for informative checks reaches 0.88–0.89 on training lengths, 84–93% of the full reward's gain over outcome-only. On long chains, the unchecked-gap term drives indiscriminate checking unless the cue terms offset it (selected checkpoints; at the last checkpoint the ablation ranking changes).
+   - The repair-pending bit and the check payment add up rather than substitute: with the bit, outcome-only agents behave much like monitorability-aware agents without it (20% vs 21% collapse; late checkpoints average 0.63 vs 0.63 training-length success), and the check payment still adds about as much on top (0.93). Only the action history closes the gap (0.92 vs 0.95).
+   - In ablations, every variant that keeps the per-action cost and pays for informative checks reaches 0.88–0.89 on training lengths, 84–93% of the full reward's gain over outcome-only. On long chains, removing only the cue terms led to over-checking at selected checkpoints, plausibly through the unchecked-gap term's refund for any check (not isolated; at the last checkpoint the ablation ranking changes).
 4. **Training is unstable, so we report both checkpoints.** Greedy policies swing between solutions throughout training. Selected and last checkpoints are both reported; selection never sees held-out lengths.
 
 ### A correction to the earlier version
@@ -92,7 +93,7 @@ The first version of this repository concluded that monitorability-aware RL "rem
 src/ultrarl/
   env.py            ChainEnv: dynamics, budget, masks, per-episode metrics
   rewards.py        outcome-only / naive process / monitorability-aware rewards
-  observations.py   absolute, absolute-without-position, invariant, memory, repair-pending and slack-ratio encoders
+  observations.py   absolute, absolute-without-position, invariant, memory, repair-pending, action-history and slack-ratio encoders
   policies.py       hand-coded reference policies (observable information only)
   optimal.py        exact dynamic-programming planner: best success without re-checking earlier steps
   dqn.py            masked Double DQN with a numpy replay buffer
@@ -124,7 +125,7 @@ make analyses      # recompute observation coverage and the Q-value probe from s
 make report        # regenerate all figures, tables and paper numbers from results/ (no training)
 make paper         # ... and rebuild paper/main.pdf (needs a LaTeX installation)
 make equivalence   # rewritten environment vs. the vendored original implementation
-make reproduce     # retrain all 300 runs from scratch into results_repro/ (~5.5 h, 4 CPU cores)
+make reproduce     # retrain all 330 runs from scratch into results_repro/ (~6 h, 4 CPU cores)
                    # and check every checkpoint bitwise (requires the pinned versions)
 ```
 
@@ -133,13 +134,13 @@ The per-experiment targets (`make main`, `make ablations`, …) resume into `res
 ## Engineering notes
 
 - **Verified rewrite.** The environment was rewritten for clarity. `make equivalence` compares it with the original implementation (vendored in `scripts/legacy/`) step by step: 86,112 steps, 0 differences in dynamics, masks, rewards or observations.
-- **Independent streams, honest held-out sets.** Training, validation and evaluation episodes come from independent RNG streams, and the tests check which stream `evaluate()` uses. Checkpoint selection may only use the training distribution; the config loader rejects anything else. Training-length evaluation is in-distribution by design. Lengths 10–14 were never used for any choice; lengths 7–9 were also measured in the hyperparameter pilot (`results/pilot/`).
+- **Independent streams, honest held-out sets.** Training, validation and evaluation episodes come from independent RNG streams, and the tests check which stream `evaluate()` uses. Checkpoint selection may only use the training distribution; the config loader rejects anything else. Training-length evaluation is in-distribution by design. Lengths 10–14 were never used for hyperparameter choice or checkpoint selection; lengths 7–9 were also measured in the hyperparameter pilot (`results/pilot/`).
 - **Fair baselines and an exact reference.** Hand-coded reference policies see only what the agents could observe, plus the action costs. The budget-aware heuristic's margin is tuned on training lengths (`scripts/tune_heuristic.py`). The exact planner (`src/ultrarl/optimal.py`) also knows the chain length and the environment's parameters. It is optimal among policies that never go back to check an earlier step, which costs at least two extra units; tests check that it reaches its planned success in simulation. The DQN hyperparameters are those of the project's first version, kept after a small two-seed pilot (archived in `results/pilot/`) and re-checked under three alternatives.
 - **Numbers come from code.** Every number in the paper that is computed from `results/` is a macro from `paper/numbers.tex`, which `ultrarl.report` generates; a reference to a missing result is a LaTeX error. Figures quoted about the earlier version, fixed settings such as hyperparameters, the output of `make equivalence`, and the numbers in this README are written by hand. CI regenerates the tables and numbers and fails if they differ from the committed ones.
 
 ## How this project was made
 
-This revision of the project (commit `83c51e8` onward), including the controlled re-run, the follow-up experiments, the analysis code and the paper, was produced with substantial help from Claude Code (an AI coding assistant), under my direction: implementation, running experiments, statistical analysis, drafting the paper, and repeated automated multi-agent reviews of the code and claims (the "audit round" commits respond to those reviews). I chose the research questions, reviewed the results and am responsible for every claim.
+This revision of the project (commit `83c51e8` onward), including the controlled re-run, the follow-up experiments, the analysis code and the paper, was produced with substantial help from Claude Code (an AI coding assistant), under my direction: implementation, running experiments, statistical analysis, drafting the paper, and repeated automated multi-agent reviews of the code and claims. The "audit round" commits respond to those reviews, and several of the control experiments were proposed by them: the encoder control, the exact planner, the value probe, the repair-pending bit and the action-history encoder. I am responsible for every claim.
 
 ## Citation
 

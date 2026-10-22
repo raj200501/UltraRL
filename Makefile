@@ -35,7 +35,7 @@ $(EXPERIMENTS):
 
 experiments: $(EXPERIMENTS)
 
-# Retrain everything from scratch into results_repro/ (~5.5 h on 4 cores) and
+# Retrain everything from scratch into results_repro/ (~6 h on 4 cores) and
 # check that every checkpoint is bitwise identical to the saved one.
 reproduce:
 	@for exp in $(EXPERIMENTS); do \

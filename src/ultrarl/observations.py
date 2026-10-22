@@ -45,8 +45,10 @@ in whether, and how, they reveal position and chain length:
 ``history`` (49-d)
     the invariant features plus a one-hot code for each of the last 8 actions
     (THINK, VERIFY with a SAFE or UNSAFE result, REVISE), oldest first and
-    zero-padded. Enough to infer a pending repair on chains of up to 8 steps,
-    but the agent has to learn to use it.
+    zero-padded (COMMIT has a code too, but ends the episode, so it never
+    appears). Often enough to infer a pending repair, but an UNSAFE result can
+    leave the window while the repair is still pending, and the agent has to
+    learn to use it.
 
 Budget slack ``b - (d - t)`` is the number of non-THINK actions the agent can
 still afford while finishing the chain.

@@ -48,6 +48,7 @@ def test_q_probe_on_a_scripted_repairing_agent():
     # continuing past a caught fault always fails, so repairing is worth far more
     assert stats["return_think"] < -1.0 and stats["return_revise"] > stats["return_think"] + 1.0
     assert 0.0 <= stats["aliased_rate"] <= 1.0
+    assert stats["q_start"] == 1.0  # the scripted Q puts 1 on the chosen action
     assert -2.0 < stats["return_start"] < 1.5
 
 

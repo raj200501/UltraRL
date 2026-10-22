@@ -63,3 +63,17 @@ def test_memory_and_pending_bits_after_a_caught_fault():
     assert bits([T, T, V]) == (True, True)  # caught
     assert bits([T, T, V, T]) == (True, True)  # continuing past it: still pending
     assert bits([T, T, V, R, T]) == (True, False)  # repaired: memory stays set, pending clears
+
+
+def test_history_window_codes_order_and_padding():
+    from ultrarl.env import HISTORY_EVENTS, HISTORY_LENGTH
+    from ultrarl.observations import HISTORY_CODES, HISTORY_STEPS
+
+    assert HISTORY_STEPS == HISTORY_LENGTH and len(HISTORY_EVENTS) == HISTORY_CODES
+    env = ChainEnv(EnvConfig(observation="history"))
+    env.reset(seed=0, depth_range=(5, 5), fault_index=1)
+    for a in (T, T, V, R):  # THINK, THINK, VERIFY (UNSAFE: step 1 is the fault), REVISE
+        obs = env.step(a)[0]
+    window = obs[9:].reshape(HISTORY_STEPS, HISTORY_CODES)
+    assert not window[:4].any()  # zero padding before the first action, oldest first
+    assert [int(np.argmax(r)) for r in window[4:]] == [0, 0, 2, 3]  # THINK, THINK, UNSAFE, REVISE

@@ -24,9 +24,9 @@
 
 \input{numbers.tex}
 
-\title{Learning When to Verify Under a Budget:\\Process Rewards, Representations, and Length Generalization}
+\title{Learning When to Verify Under a Budget:\\Process Rewards, Representations,\\and Length Generalization}
 
-\author{Raj Kashikar\\\texttt{\href{https://github.com/raj200501/UltraRL}{github.com/raj200501/UltraRL}}}
+\author{Raj Kashikar\\\texttt{\href{https://github.com/raj200501/UltraRL}{github.com/raj200501/UltraRL}}\\October 2026 (revises the April 2026 version of this study)}
 \date{October 2026}
 
 \begin{document}
@@ -36,9 +36,9 @@
 \begin{abstract}
 Reasoning systems must decide when to spend effort checking their own work. We study this decision in a small testbed where everything is exactly measurable: an agent executes an arithmetic chain that may contain one silent fault, sees a noisy one-bit cue per step, and divides a fixed budget between executing, verifying and repairing steps. We train Double DQN agents with outcome-only and process rewards and several observation encoders, and evaluate them on chains up to $2.3\times$ longer than in training (10 seeds, paired tests).
 \begin{enumerate}
-  \item Length generalization depends mainly on the observation encoder. With the original encoder's length-dependent features, every reward falls below a never-check baseline on the longest chains. With length-invariant features, the reward that pays most for checks keeps \val{main/ma_inv/heldout_long/success} success at lengths 7--9 and \val{main/ma_inv/heldout_xlong/success} at 10--14, against \val{main/optimal/heldout_long/success} and \val{main/optimal/heldout_xlong/success} for an exact planner; on the longest chains a cue-triggered heuristic (\val{main/cue_triggered/heldout_xlong/success}) still beats it.
+  \item Length generalization depends mainly on the observation encoder. With the original encoder's length-dependent features, every reward falls below a never-check baseline on the longest chains. With length-invariant features, the reward that pays most for checks keeps \val{main/ma_inv/heldout_long/success} success (checkpoints selected on training lengths) at lengths 7--9 and \val{main/ma_inv/heldout_xlong/success} at 10--14, against \val{main/optimal/heldout_long/success} and \val{main/optimal/heldout_xlong/success} for an exact planner; on the longest chains a cue-triggered heuristic (\val{main/cue_triggered/heldout_xlong/success}) still beats it.
   \item Under every reward, agents repeatedly fall into policies that catch faults but do not repair them. This is a learning failure under partial observability, not reward hacking: the observation does not show whether a caught fault is still unrepaired, and adding that one bit removes the failure under all three rewards (from \val{main/outcome_inv/collapse_norepair_rate/pct}--\val{main/naive_inv/collapse_norepair_rate/pct} of late checkpoints to \val{followups/ma_pending/collapse_norepair_rate/pct}). Agents shown their last few actions instead learn this state themselves on training lengths, but then generalize poorly to longer chains.
-  \item Paying for informative checks helps agents find checking policies sooner and keep them: \val{main/outcome_inv/collapse_rate/pct} of outcome-only agents' late checkpoints collapse, against \val{main/ma_inv/collapse_rate/pct} with a substantial check payment, also under three other learner settings. Much of this benefit compensates for missing state: with the bit, outcome-only collapse falls to \val{followups/outcome_pending/collapse_rate/pct}, and with a history of recent actions to \val{followups/outcome_history/collapse_rate/pct}.
+  \item Paying for informative checks helps agents find checking policies sooner and keep them: \val{main/outcome_inv/collapse_rate/pct} of outcome-only agents' late checkpoints collapse, against \val{main/ma_inv/collapse_rate/pct} with a substantial check payment, also under three other learner settings. With a history of recent actions this advantage disappears on training lengths (outcome-only collapse \val{followups/outcome_history/collapse_rate/pct}); with the pending bit alone it shrinks but persists.
 \end{enumerate}
 These results revise an earlier version of this study, which attributed the length-generalization failure to the reward.
 \end{abstract}

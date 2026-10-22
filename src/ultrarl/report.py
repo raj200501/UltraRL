@@ -326,10 +326,11 @@ def curve_stats(
 
     A late checkpoint (after ``burn_in`` episodes) is *collapsed* if its greedy
     success on training lengths is at most ``COLLAPSE_THRESHOLD``. Collapsed
-    checkpoints are split by their fault-detection rate into *low-detection*
+    checkpoints include, by their fault-detection rate, *low-detection*
     (detection < 0.2: the policy checks too little, or in the wrong places, to catch
     faults; the ones we inspected check only the final step) and *detect-without-repair*
-    (detection >= 0.5: it still catches faults but does not complete the repair).
+    (detection >= 0.5: it still catches faults but does not complete the repair);
+    collapsed checkpoints with intermediate detection belong to neither.
     """
     out: dict[str, float | str] = {}
     late = curves[curves.episode > burn_in]
@@ -355,6 +356,10 @@ def curve_stats(
             out[f"{prefix}/{method}/{key[name]}/hi"] = min(1.0, high)
         jumps = sub.sort_values("episode").groupby("seed").train_like_success.apply(lambda x: x.diff().abs().mean())
         out[f"{prefix}/{method}/mean_abs_change"] = float(jumps.mean())
+        late_success = sub.groupby("seed").train_like_success.mean().to_numpy(dtype=float)
+        low, high = t_interval(late_success)
+        out[f"{prefix}/{method}/late_success"] = float(late_success.mean())
+        out.update({f"{prefix}/{method}/late_success/lo": low, f"{prefix}/{method}/late_success/hi": high})
         everything = curves[curves.method == method]
         peaks = everything.groupby("seed").train_like_success.max()
         out[f"{prefix}/{method}/seeds_peak_above_half"] = str(int((peaks > 0.5).sum()))
@@ -380,8 +385,28 @@ def unrepaired_loss_macros(per_seed: pd.DataFrame, prefix: str) -> dict[str, flo
     """Fraction of episodes lost to a fault that was caught but not repaired, per method and setting:
     P(fault) * P(caught | fault) * P(failure | caught), computed per seed and averaged."""
     loss = per_seed.fault_rate * per_seed.fault_detected * (1.0 - per_seed.success_given_detected)
+    loss = loss.where(per_seed.fault_detected > 0, 0.0)  # nothing caught, so nothing lost this way
     means = per_seed.assign(loss=loss).groupby(["method", "setting"]).loss.mean()
     return {f"{prefix}/{m}/{s}/unrepaired_rate": float(v) for (m, s), v in means.items()}
+
+
+def compute_macros(results: Path, experiments: list[str]) -> dict[str, str]:
+    """Run counts and CPU time from the saved training manifests (for the compute paragraph)."""
+    out: dict[str, str] = {}
+    runs = {name: pd.read_csv(results / name / "train_runs.csv") for name in experiments
+            if (results / name / "train_runs.csv").exists()}  # fmt: skip
+    for name, frame in runs.items():
+        out[f"runs/{name}"] = str(len(frame))
+    if runs:
+        everything = pd.concat([f.assign(experiment=n) for n, f in runs.items()], ignore_index=True)
+        out["runs/saved"] = str(len(everything))
+        # the ablations' full-reward condition is the main experiment's ma_inv, trained twice
+        shared = everything[(everything.experiment == "ablations") & (everything.method == "ma_inv")]
+        out["runs/distinct"] = str(len(everything) - len(shared))
+        hours = everything.wall_seconds.sum() / 3600
+        out["runs/core_hours"] = f"{hours:.0f}"
+        out["runs/hours_on_4_cores"] = f"{hours / 4:.0f}"
+    return out
 
 
 def selection_macros(train_runs: pd.DataFrame, prefix: str) -> dict[str, str]:
@@ -557,6 +582,7 @@ def table_pending(main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict
                 continue
             pct = [f"{100 * stats[f'{prefix}/{m}/{k}']:.0f}\\%" for k in ("collapse_rate", "collapse_norepair_rate",
                                                                           "collapse_lowdetect_rate")]  # fmt: skip
+            pct.append(f"{stats[f'{prefix}/{m}/late_success']:.2f}")
             rows.append(
                 [
                     SCHEME_LABEL[scheme] + suffix,
@@ -568,9 +594,9 @@ def table_pending(main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict
                     fmt(row(combined, "heldout_xlong", m + FINAL), "success"),
                 ]
             )
-    header = ["Reward and observation", "Collapsed", "no repair", "low detection", "Success 3--6", "Success 7--9",
-              "Success 10--14", "Last ckpt.\\ 7--9", "Last ckpt.\\ 10--14"]  # fmt: skip
-    (out / "pending_results.tex").write_text(latex_table(header, rows, "lcccccccc"), encoding="utf-8")
+    header = ["Reward and observation", "Collapsed", "no repair", "low detection", "Late success", "Success 3--6",
+              "Success 7--9", "Success 10--14", "Last ckpt.\\ 7--9", "Last ckpt.\\ 10--14"]  # fmt: skip
+    (out / "pending_results.tex").write_text(latex_table(header, rows, "lccccccccc"), encoding="utf-8")
 
 
 def table_encoders(
@@ -647,7 +673,8 @@ PROBE_DERIVED = ("q_gap", "true_gap", "start_bias", "think_error", "revise_error
 def with_probe_derived(probe: pd.DataFrame) -> pd.DataFrame:
     """Learned and true gaps between the two actions; each value's raw error (learned minus
     true); and its excess error, relative to the checkpoint's error at the first decision
-    point of an episode (its general offset, measured where no hidden state differs)."""
+    point of an episode (its general offset, measured where the hidden state follows the task prior
+    and no history can create aliasing)."""
     start_bias = probe.q_start - probe.return_start
     think_error, revise_error = probe.q_think - probe.return_think, probe.q_revise - probe.return_revise
     return probe.assign(
@@ -941,6 +968,7 @@ def main(argv: list[str] | None = None) -> None:
             table_encoders(summary, summaries["encoders"], extras, tables)
     if probe_path.exists() and "followups" in summaries:
         table_probe(probe, summaries, extras, tables)
+    extras.update(compute_macros(results, list(summaries)))
     for name in summaries:
         runs = results / name / "train_runs.csv"
         if runs.exists():
