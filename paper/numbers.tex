@@ -218,12 +218,12 @@
 \expandafter\def\csname ur@main/cue_triggered/lengths/max/pct\endcsname{88}
 \expandafter\def\csname ur@main/optimal/lengths/min/pct\endcsname{90}
 \expandafter\def\csname ur@main/optimal/lengths/max/pct\endcsname{99}
-\expandafter\def\csname ur@ablations/cue_bonus_only/collapse_lowdetect_rate/pct\endcsname{1\%}
-\expandafter\def\csname ur@ablations/no_budget_penalty/collapse_norepair_rate/pct\endcsname{39\%}
 \expandafter\def\csname ur@ablations/no_check_bonuses/collapse_rate/pct\endcsname{13\%}
 \expandafter\def\csname ur@ablations/no_check_bonuses/collapse_rate/lo/pct\endcsname{8\%}
 \expandafter\def\csname ur@ablations/no_check_bonuses/collapse_rate/hi/pct\endcsname{17\%}
-\expandafter\def\csname ur@ablations/no_check_bonuses/collapse_norepair_rate/pct\endcsname{12\%}
+\expandafter\def\csname ur@extremes/ablations/max/collapse_lowdetect_rate/pct\endcsname{1\%}
+\expandafter\def\csname ur@extremes/ablations/min/collapse_norepair_rate/pct\endcsname{12\%}
+\expandafter\def\csname ur@extremes/ablations/max/collapse_norepair_rate/pct\endcsname{39\%}
 \expandafter\def\csname ur@abl/ma_inv-no_cue_terms/heldout_long/success\endcsname{0.22}
 \expandafter\def\csname ur@abl/ma_inv-no_cue_terms/heldout_long/success/lo\endcsname{0.13}
 \expandafter\def\csname ur@abl/ma_inv-no_cue_terms/heldout_long/success/hi\endcsname{0.32}
@@ -276,6 +276,10 @@
 \expandafter\def\csname ur@sensitivity/outcome_inv_lr3e-4/collapse_rate/pct\endcsname{81\%}
 \expandafter\def\csname ur@sensitivity/outcome_inv_polyak/collapse_rate/pct\endcsname{87\%}
 \expandafter\def\csname ur@sensitivity/outcome_inv_sync1000/collapse_rate/pct\endcsname{96\%}
+\expandafter\def\csname ur@extremes/sensitivity_outcome/min/collapse_rate/pct\endcsname{81\%}
+\expandafter\def\csname ur@extremes/sensitivity_outcome/max/collapse_rate/pct\endcsname{96\%}
+\expandafter\def\csname ur@extremes/sensitivity_ma/min/collapse_rate/pct\endcsname{17\%}
+\expandafter\def\csname ur@extremes/sensitivity_ma/max/collapse_rate/pct\endcsname{22\%}
 \expandafter\def\csname ur@probe/ma_history/think_bias\endcsname{0.40}
 \expandafter\def\csname ur@probe/ma_history3/think_bias\endcsname{1.37}
 \expandafter\def\csname ur@probe/ma_inv/think_rate/pct\endcsname{0\%}
@@ -299,7 +303,6 @@
 \expandafter\def\csname ur@probe/naive_history3/think_bias\endcsname{1.35}
 \expandafter\def\csname ur@probe/naive_inv/think_rate/pct\endcsname{2\%}
 \expandafter\def\csname ur@probe/naive_inv@final/think_rate/pct\endcsname{28\%}
-\expandafter\def\csname ur@probe/naive_inv@final/unaffordable_rate/pct\endcsname{27\%}
 \expandafter\def\csname ur@probe/naive_pending@final/think_rate/pct\endcsname{1\%}
 \expandafter\def\csname ur@probe/outcome_history/think_bias\endcsname{0.16}
 \expandafter\def\csname ur@probe/outcome_history3/think_bias\endcsname{1.47}
@@ -307,6 +310,9 @@
 \expandafter\def\csname ur@probe/outcome_inv@final/n_seeds\endcsname{5}
 \expandafter\def\csname ur@probe/outcome_inv@final/think_rate/pct\endcsname{22\%}
 \expandafter\def\csname ur@probe/outcome_pending@final/think_rate/pct\endcsname{0\%}
+\expandafter\def\csname ur@probe/unaffordable/pooled_max_rate/pct\endcsname{12\%}
+\expandafter\def\csname ur@probe/unaffordable/over_half\endcsname{3}
+\expandafter\def\csname ur@probe/unaffordable/checkpoints\endcsname{295}
 \expandafter\def\csname ur@probe/inv_final/think_error/min\endcsname{0.83}
 \expandafter\def\csname ur@probe/inv_final/think_error/max\endcsname{1.24}
 \expandafter\def\csname ur@probe/inv_final/revise_error/min\endcsname{\ensuremath{-}1.18}
@@ -432,6 +438,7 @@
 \expandafter\def\csname ur@ratio/history/late_failure\endcsname{1.79}
 \expandafter\def\csname ur@ratio/history3/late_failure\endcsname{3.01}
 \expandafter\def\csname ur@extremes/ratios/min/late_failure\endcsname{1.79}
+\expandafter\def\csname ur@extremes/history3/max/collapse_rate/pct\endcsname{2\%}
 \expandafter\def\csname ur@followups/histories/train_like/min\endcsname{0.95}
 \expandafter\def\csname ur@followups/histories/train_like/max\endcsname{0.97}
 \expandafter\def\csname ur@process/naive_check_only/collapse_rate/pct\endcsname{87\%}

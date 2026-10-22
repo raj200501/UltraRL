@@ -263,3 +263,31 @@ def test_every_result_the_paper_references_is_in_the_committed_numbers():
     defined = set(re.findall(r"\\csname ur@(.+?)\\endcsname", (paper / "numbers.tex").read_text(encoding="utf-8")))
     missing = report.used_macros(paper) - defined
     assert not missing, sorted(missing)[:10]
+
+
+def test_extreme_macros_pick_min_and_max_with_their_intervals_and_reject_missing_results():
+    stats = {"a": 0.2, "a/lo": 0.1, "a/hi": 0.3, "a/p": "0.010", "b": 0.5, "c": 0.2}
+    out = report.extreme_macros(stats, {"A": "a", "B": "b", "C": "c"}, "x/value_rate")
+    assert out["x/max/value_rate"] == 0.5 and out["x/min/value_rate"] == 0.2
+    assert out["x/min/value_rate/lo"] == 0.1 and out["x/min/value_rate/p"] == "0.010"  # first of the tied minima
+    assert "x/max/value_rate/lo" not in out
+    with pytest.raises(KeyError):
+        report.extreme_macros(stats, {"A": "a", "D": "d"}, "x/value_rate")
+
+
+def test_success_range_rounds_to_percent_and_two_decimals():
+    rows = [{"setting": "s", "method": m, "success": v} for m, v in (("m1", 0.884), ("m2", 0.915))]
+    summary = pd.DataFrame(rows)
+    out = report.success_range(summary, "k", [("m1", "s"), ("m2", "s")])
+    assert out == {"k/min/pct": "88", "k/max/pct": "92", "k/min": "0.88", "k/max": "0.92"}
+
+
+def test_unaffordable_macros_pool_seeds_and_count_single_checkpoints():
+    probe = pd.DataFrame(
+        {"method": ["a", "a", "b", "b"], "checkpoint": ["final"] * 4, "seed": [0, 1, 0, 1],
+         "unsafe_points": [0, 90, 10, 0], "unaffordable_points": [10, 0, 0, 0]}
+    )  # fmt: skip
+    out = report.unaffordable_macros(probe)
+    assert out["probe/unaffordable/pooled_max_rate"] == pytest.approx(0.1)  # a: 10 of 100 points
+    assert out["probe/unaffordable/over_half"] == "1"  # a's seed 0 has no affordable point
+    assert out["probe/unaffordable/checkpoints"] == "3"  # b's seed 1 has no post-UNSAFE point

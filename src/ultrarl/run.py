@@ -25,7 +25,6 @@ import hashlib
 import json
 import multiprocessing as mp
 import os
-import platform
 import time
 from pathlib import Path
 from typing import Any
@@ -38,7 +37,7 @@ from ultrarl.dqn import DQNAgent
 from ultrarl.policies import heuristic_act
 from ultrarl.rollout import evaluate
 from ultrarl.stats import FINAL_SUFFIX, summarize
-from ultrarl.train import checkpoint_path, curve_path, greedy_act, train_run
+from ultrarl.train import checkpoint_path, curve_path, greedy_act, platform_info, train_run
 
 # ``return`` stays in eval_per_seed.csv but is not summarised: it is measured under
 # each method's own training reward, so it is not comparable across methods.
@@ -148,7 +147,7 @@ def run_complete(exp: ExperimentConfig, out: Path, method: Method, seed: int) ->
     return True
 
 
-def train_all(exp: ExperimentConfig, config_path: str, smoke: bool, out: Path, workers: int, retrain: bool) -> None:
+def train_all(exp: ExperimentConfig, config_path: str, smoke: bool, out: Path, workers: int, retrain: bool) -> int:
     jobs = [
         (config_path, smoke, m.name, s, str(out))
         for m in exp.learned_methods
@@ -158,6 +157,7 @@ def train_all(exp: ExperimentConfig, config_path: str, smoke: bool, out: Path, w
     print(f"[train] {len(jobs)} runs to train ({workers} workers)", flush=True)
     _pool_map(_train_job, jobs, workers)
     write_manifest(exp, out)
+    return len(jobs)
 
 
 def write_manifest(exp: ExperimentConfig, out: Path) -> pd.DataFrame:
@@ -235,27 +235,16 @@ def _check_output_dir(out: Path, config_path: str, smoke: bool) -> None:
             print(f"[run] note: {config_path} differs from the config recorded in {out}", flush=True)
 
 
-def platform_info() -> dict[str, str]:
-    """Software and hardware that bitwise reproduction depends on (CPU kernels differ by instruction set)."""
-    import re
-
-    import numpy
-
-    blas = re.search(r"BLAS_INFO=(\w+)", torch.__config__.show())
-    return {
-        "python": platform.python_version(),
-        "torch": torch.__version__,
-        "numpy": numpy.__version__,
-        "platform": platform.platform(),
-        "cpu_capability": torch.backends.cpu.get_cpu_capability(),
-        "blas": blas.group(1) if blas else "unknown",
-        "mkl": str(torch.backends.mkl.is_available()),
-    }
-
-
-def _record_provenance(out: Path, config_path: str, smoke: bool) -> None:
+def _record_provenance(out: Path, config_path: str, smoke: bool, trained: int) -> None:
+    """Write the config and run info; the platform is updated only when this invocation trained runs
+    (it describes where checkpoints were produced, not where they were last evaluated)."""
     text, info = _provenance(config_path, smoke)
-    info["platform"] = platform_info()
+    info_path = out / "run_info.json"
+    previous = json.loads(info_path.read_text(encoding="utf-8")) if info_path.exists() else {}
+    if trained:
+        info["platform"] = platform_info()
+    elif "platform" in previous:
+        info["platform"] = previous["platform"]
     target = out / "config.yaml"
     if not (target.exists() and target.resolve() == Path(config_path).resolve()):
         target.write_text(text, encoding="utf-8")
@@ -281,9 +270,9 @@ def main(argv: list[str] | None = None) -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     _check_output_dir(out, args.config, args.smoke)
-    start = time.time()
+    start, trained = time.time(), 0
     if args.stage in ("train", "all"):
-        train_all(exp, args.config, args.smoke, out, args.workers, args.retrain)
+        trained = train_all(exp, args.config, args.smoke, out, args.workers, args.retrain)
     if args.stage in ("eval", "all"):
         evaluate_all(exp, args.config, args.smoke, out, args.workers)
     if args.stage == "summarize":
@@ -291,7 +280,7 @@ def main(argv: list[str] | None = None) -> None:
         summarize(per_seed, ["setting", "method", "display_name"], SUMMARY_METRICS).to_csv(
             out / "eval_summary.csv", index=False
         )
-    _record_provenance(out, args.config, args.smoke)
+    _record_provenance(out, args.config, args.smoke, trained)
     print(f"[run] {exp.name} finished in {time.time() - start:.0f}s -> {out}", flush=True)
 
 

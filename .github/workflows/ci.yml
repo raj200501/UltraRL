@@ -37,8 +37,11 @@ jobs:
         run: pytest
       - name: Smoke run of the full pipeline
         run: python -m ultrarl.run --config configs/main.yaml --out /tmp/smoke --smoke --workers 2
-      - name: Committed tables and paper numbers match the saved results
+      - name: Committed figures, tables and paper numbers match the saved results
         if: matrix.deps == 'locked'
         run: |
           python -m ultrarl.report --results results --paper paper
-          git diff --exit-code -- paper/numbers.tex paper/tables results
+          git diff --exit-code -- paper/numbers.tex paper/tables paper/figures results
+      - name: Rewritten environment matches the original implementation
+        if: matrix.deps == 'locked'
+        run: python scripts/check_legacy_equivalence.py

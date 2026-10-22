@@ -1,6 +1,6 @@
 """Retrain one run from each experiment and check it bitwise against the saved one.
 
-    python scripts/spot_check.py [--out DIR]   # about 5 minutes on 4 cores
+    python scripts/spot_check.py [--out DIR]   # about 5 minutes on 6 cores, 9 on 4
 
 A quick alternative to ``make reproduce`` (which retrains everything): one
 (method, seed) per experiment, chosen to cover different rewards and encoders.

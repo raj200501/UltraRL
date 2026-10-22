@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff==0.17.1"]  # pinned: new ruff releases change lint rules and formatting
 
 [tool.setuptools.packages.find]
 where = ["src"]

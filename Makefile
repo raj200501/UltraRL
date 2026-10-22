@@ -2,7 +2,7 @@ PYTHON ?= python
 WORKERS ?= 4
 EXPERIMENTS := main ablations sensitivity followups encoders process
 
-.PHONY: install test lint smoke analyses report paper experiments reproduce spot-check equivalence clean $(EXPERIMENTS)
+.PHONY: install test lint smoke demo analyses report paper experiments reproduce reproduce-stats spot-check equivalence clean $(EXPERIMENTS)
 
 install:  ## editable install with dev tools (CPU torch is enough)
 	$(PYTHON) -m pip install -e ".[dev]"
@@ -18,7 +18,11 @@ smoke:  ## ~30 s end-to-end run of the whole pipeline in a scratch directory
 	rm -rf results/smoke
 	$(PYTHON) -m ultrarl.run --config configs/main.yaml --out results/smoke --smoke --workers $(WORKERS)
 
-analyses:  ## observation coverage (hand-coded and agents' own rollouts) and the value probe, from saved checkpoints (~20 min)
+demo:  ## print a caught fault left unrepaired, and the same situation repaired with the pending bit
+	$(PYTHON) scripts/show_episode.py
+	$(PYTHON) scripts/show_episode.py --experiment followups --method ma_pending --after-catch repair
+
+analyses:  ## observation coverage (hand-coded and agents' own rollouts), low-detection inspection and the value probe (~20 min on 4 cores)
 	$(PYTHON) scripts/observation_coverage.py
 	$(PYTHON) scripts/agent_coverage.py
 	$(PYTHON) scripts/inspect_low_detection.py
@@ -46,7 +50,15 @@ reproduce:
 	  $(PYTHON) scripts/compare_checkpoints.py results/$$exp results_repro/$$exp || exit 1; \
 	done
 
-spot-check:  ## retrain one run per experiment and compare it bitwise with the saved one (~5 min)
+# On hardware where bitwise identity is not expected: retrain everything and compare
+# success statistically, experiment by experiment, without stopping at the first difference.
+reproduce-stats:
+	@for exp in $(EXPERIMENTS); do \
+	  $(PYTHON) -m ultrarl.run --config configs/$$exp.yaml --out results_repro/$$exp --workers $(WORKERS) || exit 1; \
+	  $(PYTHON) scripts/compare_summaries.py results/$$exp results_repro/$$exp; \
+	done
+
+spot-check:  ## retrain one run per experiment and compare it bitwise with the saved one (~5 min on 6 cores, ~9 on 4)
 	$(PYTHON) scripts/spot_check.py
 
 equivalence:  ## rewritten environment vs. the original implementation, step by step

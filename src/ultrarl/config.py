@@ -27,7 +27,7 @@ class EnvConfig:
     revise_cost: int = 1
     allow_verify: bool = True
     allow_revise: bool = True
-    # Observation encoder ("absolute" or "invariant")
+    # Observation encoder (one of ultrarl.observations.OBSERVATION_KINDS)
     observation: str = "absolute"
     # Base reward
     reward_scheme: str = "outcome_only"

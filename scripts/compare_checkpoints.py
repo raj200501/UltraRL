@@ -1,4 +1,4 @@
-"""Check that two results trees contain bitwise-identical checkpoints.
+"""Check that two results trees contain checkpoints with identical network weights.
 
     python scripts/compare_checkpoints.py results/main results_repro/main
 
@@ -38,13 +38,18 @@ def main(reference: str, candidate: str) -> int:
         )
         if not (same and ref_meta["checkpoint_episode"] == meta["checkpoint_episode"]):
             mismatched.append(name)
-    print(f"{len(ref_names & cand_names) - len(mismatched)}/{len(ref_names)} reference checkpoints reproduced exactly")
+    print(
+        f"{len(ref_names & cand_names) - len(mismatched)}/{len(ref_names)} reference checkpoints reproduced "
+        "(identical weights and checkpoint episode)"
+    )
     for label, names in (("missing", missing), ("unexpected", extra), ("differs", mismatched)):
         for name in names:
             print(f"  {label}: {name}")
     if mismatched:
+        _, meta = DQNAgent.load(ref_dir / mismatched[0])  # checkpoints record where they were trained
         info = Path(reference) / "run_info.json"
-        recorded = json.loads(info.read_text()).get("platform", "not recorded") if info.exists() else "not recorded"
+        recorded = meta.get("platform") or (json.loads(info.read_text()).get("platform") if info.exists() else None)
+        recorded = recorded or "not recorded"
         print(f"  reference platform: {recorded}\n  this platform:      {platform_info()}")
         print("  bitwise identity needs the same package versions and CPU capability; see compare_summaries.py")
     return 1 if (missing or extra or mismatched) else 0

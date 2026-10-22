@@ -1,8 +1,19 @@
 cff-version: 1.2.0
 message: "If you use this code or build on these results, please cite it as below."
+type: software
 title: "Learning When to Verify Under a Budget: Process Rewards, Representations, and Length Generalization"
 authors:
   - family-names: Kashikar
     given-names: Raj
+version: 1.0.0
+date-released: 2026-10-22
 repository-code: "https://github.com/raj200501/UltraRL"
 license: MIT
+preferred-citation:
+  type: generic
+  title: "Learning When to Verify Under a Budget: Process Rewards, Representations, and Length Generalization"
+  authors:
+    - family-names: Kashikar
+      given-names: Raj
+  year: 2026
+  url: "https://github.com/raj200501/UltraRL"

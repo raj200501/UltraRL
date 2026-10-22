@@ -93,3 +93,24 @@ def test_config_fields_added_after_a_checkpoint_must_keep_their_default():
     assert _config_mismatches(EnvConfig(), recorded) == []  # an older checkpoint without the field
     problems = _config_mismatches(EnvConfig(ma_fault_bonus_on_repair=True), recorded)
     assert len(problems) == 1 and problems[0].startswith("ma_fault_bonus_on_repair")
+
+
+def test_run_info_keeps_the_training_platform_when_nothing_is_trained(tmp_path):
+    import json
+
+    from ultrarl.run import _record_provenance, platform_info
+
+    (tmp_path / "run_info.json").write_text(json.dumps({"platform": {"cpu_capability": "elsewhere"}}))
+    _record_provenance(tmp_path, str(CONFIG), smoke=False, trained=0)  # e.g. a re-evaluation on another machine
+    assert json.loads((tmp_path / "run_info.json").read_text())["platform"] == {"cpu_capability": "elsewhere"}
+    _record_provenance(tmp_path, str(CONFIG), smoke=False, trained=3)
+    assert json.loads((tmp_path / "run_info.json").read_text())["platform"] == platform_info()
+
+
+def test_checkpoints_record_the_platform_they_were_trained_on(smoke_exp, tmp_path):
+    from ultrarl.train import platform_info
+
+    method = _method(smoke_exp)
+    train_run(smoke_exp, method, 0, tmp_path)
+    _, meta = DQNAgent.load(checkpoint_path(tmp_path, method, 0, "best"))
+    assert meta["platform"] == platform_info()

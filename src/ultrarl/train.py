@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import os
+import platform
+import re
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -19,6 +21,20 @@ from ultrarl.env import ChainEnv
 from ultrarl.rollout import CURVE_STREAM, TRAIN_STREAM, episode_seed, evaluate
 
 AGENT_STREAM = 3  # exploration and replay sampling
+
+
+def platform_info() -> dict[str, str]:
+    """Software and hardware that bitwise reproduction depends on (CPU kernels differ by instruction set)."""
+    blas = re.search(r"BLAS_INFO=(\w+)", torch.__config__.show())
+    return {
+        "python": platform.python_version(),
+        "torch": str(torch.__version__),  # a TorchVersion, which weights-only checkpoint loading refuses
+        "numpy": np.__version__,
+        "platform": platform.platform(),
+        "cpu_capability": torch.backends.cpu.get_cpu_capability(),
+        "blas": blas.group(1) if blas else "unknown",
+        "mkl": str(torch.backends.mkl.is_available()),
+    }
 
 
 def epsilon_at(episode: int, episodes: int, start: float, end: float, decay_fraction: float) -> float:
@@ -113,6 +129,7 @@ def train_run(exp: ExperimentConfig, method: Method, seed: int, out_dir: Path, v
         "env_steps": global_step,
         "env_config": {k: list(v) if isinstance(v, tuple) else v for k, v in asdict(env_config).items()},
         "parameter_count": agent.parameter_count(),
+        "platform": platform_info(),
     }
     metadata["wall_seconds"] = round(time.time() - start_time, 1)
     # Write the curve, then the selected checkpoint, then the final checkpoint (the

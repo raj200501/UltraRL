@@ -151,3 +151,25 @@ def test_agent_coverage_finds_training_length_observations_familiar():
     rows = {r["setting"]: r for r in coverage.job(("main", "ma_inv", 0, "best"))}
     assert rows["train_like"]["unseen_fraction"] < 0.1
     assert rows["heldout_xlong"]["unseen_fraction"] < 0.2
+
+
+def test_show_episode_traces_a_repair():
+    show = _load("show_episode")
+    lines = show.trace(ScriptedAgent(), ChainEnv(EnvConfig(observation="invariant")), 0, 0, (4, 4))
+    assert lines[0].startswith("chain of 4 steps")
+    assert lines[-1].split()[-1] in ("success", "failure") and "COMMIT" in lines[-1]
+    unsafe = [i for i, line in enumerate(lines) if "UNSAFE" in line]
+    assert all("REVISE" in lines[i + 1] for i in unsafe)  # the scripted agent always repairs
+
+
+def test_show_episode_classifies_the_action_after_a_catch():
+    show = _load("show_episode")
+    lines = [
+        "chain",
+        "  step 2/4  cue 1  slack  3  VERIFY UNSAFE",
+        "  step 2/4  cue 1  slack  2  REVISE ",
+        "  step 3/4  cue 0  slack  1  VERIFY UNSAFE",
+        "  step 3/4  cue 0  slack  0  THINK  ",
+    ]
+    assert show.after_catch(lines) == {"repair", "continue"}
+    assert show.after_catch(lines[:3]) == {"repair"}

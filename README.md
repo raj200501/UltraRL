@@ -4,7 +4,7 @@
 [![paper](https://img.shields.io/badge/paper-PDF-b31b1b)](paper/main.pdf)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Raj Kashikar · [paper (PDF)](paper/main.pdf)
+Raj Kashikar · [paper (PDF)](paper/main.pdf) · made largely with an AI coding assistant ([how](#how-this-project-was-made))
 
 > **In one sentence:** in an exact testbed for budgeted self-verification, a small RL agent's checking generalizes to longer problems mainly when its observations neither change meaning nor take unseen values as the problem grows, and its habit of catching faults without fixing them disappears once the observation records whether a fix is still pending.
 >
@@ -22,6 +22,22 @@ Reasoning models increasingly check and revise their own steps. This project stu
 - `COMMIT`: end the episode.
 
 An episode succeeds if the agent commits after executing every step with the correct value. Everything is exact: where every fault is, whether it was caught, whether it was repaired, and which steps were checked.
+
+**What the central failure looks like** (`make demo`). Two agents with the same reward on the same kind of chain, at their last checkpoints (seed 3; evaluation episodes 9 and 0, earlier steps omitted). Both catch the fault with a check; the first continues anyway and fails, the second, whose observation records that a caught fault is still open, undoes and redoes the step:
+
+```
+monitorability-aware reward, invariant observation        ... + repair-pending bit
+chain of 6 steps, fault at step 4, budget 12               chain of 6 steps, fault at step 4, budget 12
+  ...                                                        ...
+  step 3/6  cue 0  slack  5  THINK                           step 3/6  cue 0  slack  5  THINK
+  step 4/6  cue 1  slack  5  VERIFY UNSAFE                   step 4/6  cue 1  slack  5  VERIFY UNSAFE
+  step 4/6  cue 1  slack  4  THINK                           step 4/6  cue 1  slack  4  REVISE
+  step 5/6  cue 0  slack  4  VERIFY safe                     step 3/6  cue 0  slack  2  THINK
+  step 5/6  cue 0  slack  3  THINK                           step 4/6  cue 1  slack  2  THINK
+  step 6/6  cue 0  slack  3  COMMIT failure                  step 5/6  cue 0  slack  2  VERIFY safe
+                                                             step 5/6  cue 0  slack  1  THINK
+                                                             step 6/6  cue 0  slack  1  COMMIT success
+```
 
 **The rewards.** Agents are trained with one of three rewards:
 
@@ -97,7 +113,7 @@ Neither records whether a caught fault has been repaired. One follow-up adds tha
    - Monitorability-aware agents first exceed 0.5 success by a median of episode 3,500 (outcome-only: 15,000). Of the checkpoints after that point, 24% collapse (outcome-only: 66%). The naive process reward (a step-correctness bonus plus a token check payment) is in between.
    - The contrast holds under three other DQN settings and with twice the training (5 seeds each): outcome-only agents collapse in 81–96% of late checkpoints, monitorability-aware agents in 17–22%.
    - What the payment buys depends partly on what the observation hides. Its advantage in late training-length success is +0.31 with the invariant observation, +0.29 with the repair-pending bit, +0.13 with the 3-action history and +0.04 with the 8-action history (still 10/10 seeds; the check-paid agents also learn faster). Near the ceiling, though, absolute gaps are compressed: as a ratio, outcome-only late checkpoints fail 1.8, 5.0, 3.0 and 1.8 times as often as check-paid ones (invariant, pending bit, 3 and 8 actions).
-   - The naive reward's step-correctness bonus, the term closest to a process reward model, helps on its own, more the larger it is: late-checkpoint collapse falls from 85% (outcome-only) to 67%, 51% and 28% at 0.015, 0.05 and 0.1 per correct step (late success 0.39, 0.46, 0.53; the last two ahead of outcome-only in 10/10 seeds). At 0.1 the bonus makes undoing and redoing a correct step profitable; we see no sign the agents exploit that on training lengths, and paying the bonus only once per step closes the loophole without removing the gain over outcome-only (late success 0.52). The farmable 0.1 bonus prevents collapse about as well as the check payment (28% vs 21%, unresolved), the pay-once one less well (36%, p = 0.047, exploratory); both plateau lower (late success 0.53 and 0.52 vs 0.63), and no setting resolvably raises selected-checkpoint success over outcome-only. The token check payment alone does nothing measurable (87%).
+   - The naive reward's step-correctness bonus, the term closest to a process reward model, helps on its own, more the larger it is: late-checkpoint collapse falls from 85% (outcome-only) to 67%, 51% and 28% at 0.015, 0.05 and 0.1 per correct step. At 0.1 the bonus makes undoing and redoing a correct step profitable; paying it once per step closes that loophole and keeps the gain over outcome-only, but then collapses more often than with the check payment (36% vs 21%). Either way it plateaus lower (late success about 0.52 vs 0.63) and never resolvably beats outcome-only at selected checkpoints. The token check payment alone does nothing measurable.
    - In ablations, every variant that keeps the per-action cost and pays for informative checks reaches 0.88–0.89 on training lengths, 84–93% of the full reward's gain over outcome-only. On long chains, removing only the cue terms led to over-checking at selected checkpoints, plausibly through the gap term, which rewards any check that closes an unchecked stretch (not isolated; at the last checkpoint the ablation ranking changes).
 4. **Training is unstable, so we report both checkpoints.** Greedy policies swing between solutions throughout training. Selected and last checkpoints are both reported; selection never sees held-out lengths.
 
@@ -122,9 +138,9 @@ src/ultrarl/
   report.py         every figure, table and generated number in the paper, from results/
 configs/            main, ablations, sensitivity, followups, encoders, process (step-bonus sweep)
 results/<exp>/      checkpoints, learning curves, per-seed and summary CSVs (results/pilot: archived hyperparameter pilot)
-scripts/            heuristic tuning, observation coverage (hand-coded and agent rollouts), Q-value probe, planner check, legacy equivalence (vendored original env), checkpoint and results comparison
+scripts/            heuristic tuning, observation coverage (hand-coded and agent rollouts), low-detection inspection, Q-value probe, planner check, legacy equivalence (vendored original env), checkpoint and results comparison, one-run-per-experiment spot check, annotated episode viewer
 paper/              LaTeX source; numbers.tex is generated by ultrarl.report
-tests/              131 tests: dynamics, rewards, metrics, seeding, DQN target, optimal planner (incl. exhaustive search), determinism, resume safety, configs, report, analysis scripts
+tests/              138 tests: dynamics, rewards, metrics, seeding, DQN target, optimal planner (incl. exhaustive search), determinism, resume safety, configs, report, analysis scripts
 ```
 
 ## Reproducing
@@ -133,23 +149,21 @@ tests/              131 tests: dynamics, rewards, metrics, seeding, DQN target, 
 pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU is enough
 pip install -e ".[dev]"
 
-# for bitwise reproduction (make reproduce): Python 3.13 and the exact versions behind results/,
-# on an x86-64 CPU with AVX-512 (recorded for the step-bonus sweep: Linux, AVX-512, MKL; make spot-check
-# retrains one run from every experiment and reproduces all six bitwise on such a machine)
+# bitwise reproduction needs Python 3.13, the locked versions below and an x86-64 CPU with AVX-512
+# (make spot-check verifies this by retraining one run per experiment)
 pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements-lock.txt && pip install -e . --no-deps
 
-make test          # 131 tests (~2 min)
+make test          # 138 tests (~2 min)
 make smoke         # whole pipeline end to end on a tiny budget (~30 s), in results/smoke
-make analyses      # recompute observation coverage (hand-coded and agents' own rollouts) and the Q-value probe (~20 min)
+make analyses      # observation coverage, low-detection inspection and the Q-value probe, from saved checkpoints (~20 min on 4 cores)
 make report        # regenerate all figures, tables and paper numbers from results/ (no training)
 make paper         # ... and rebuild paper/main.pdf (needs a LaTeX installation)
 make equivalence   # rewritten environment vs. the vendored original implementation
-make spot-check    # retrain one run per experiment and compare it bitwise (~5 min)
+make spot-check    # retrain one run per experiment and compare it bitwise (~5 min on 6 cores, ~9 on 4)
 make reproduce     # retrain all 420 runs from scratch into results_repro/ (~8 h, 4 CPU cores)
                    # and check every checkpoint bitwise (requires the pinned versions and an AVX-512 CPU)
-python scripts/compare_summaries.py results/main results_repro/main
-                   # on other hardware: compare retrained success statistically instead
+make reproduce-stats  # on other hardware: retrain everything and compare success statistically
 ```
 
 The per-experiment targets (`make main`, `make ablations`, …; the main experiment's 60 runs take about an hour on 4 cores) resume into `results/`. They skip runs whose checkpoints exist, after checking that those checkpoints were trained with the current config, and they recompute the evaluation.

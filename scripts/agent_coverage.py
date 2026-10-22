@@ -17,7 +17,7 @@ of every length we record
   points is fixed by its training-length behaviour; what differs between agents
   is how often the critical points are unseen, and what they do there;
 * the slack spent per episode at familiar and at unseen observations (a
-  ``VERIFY`` uses one unit, a ``REVISE`` two, counting the redone step);
+  ``REVISE`` also counts the step it makes the agent redo);
 * the un-cued check rate in the first half of the chain, where most of the slack
   is spent;
 * how often the whole episode so far fits in the action-history window
@@ -49,6 +49,8 @@ REFERENCE_EPISODES, EPISODES = 2000, 500
 
 def rollouts(agent: DQNAgent, env: ChainEnv, stream: int, seed: int, setting, episodes: int) -> pd.DataFrame:
     """One row per decision point of greedy rollouts."""
+    cfg = env.cfg  # slack used: a VERIFY costs its own price, a REVISE also the redone step
+    costs = {Action.VERIFY: cfg.verify_cost, Action.REVISE: cfg.revise_cost + cfg.think_cost}
     rows = []
     for i in range(episodes):
         obs = env.reset(seed=episode_seed(stream, seed, i, setting.name), depth_range=setting.depth_range)
@@ -63,7 +65,7 @@ def rollouts(agent: DQNAgent, env: ChainEnv, stream: int, seed: int, setting, ep
                     "uncued": bool(o.step > 0 and not o.step_checked and mask[Action.VERIFY] and o.cue == 0),
                     "verify": action == Action.VERIFY,
                     "spend": action in (Action.VERIFY, Action.REVISE),
-                    "cost": {Action.VERIFY: 1, Action.REVISE: 2}.get(Action(action), 0),
+                    "cost": costs.get(Action(action), 0),
                     "broke": o.slack == 0 and o.step < o.depth,  # spending now leaves too little to finish
                     "early": o.step <= o.depth / 2,
                     "whole": len(env.events) <= HISTORY_LENGTH,

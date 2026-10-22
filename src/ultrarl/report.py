@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import matplotlib
@@ -87,7 +88,7 @@ def row(summary: pd.DataFrame, setting: str, method: str) -> pd.Series:
 
 # --------------------------------------------------------------------- figures
 def fig_length_generalization(summary: pd.DataFrame, out: Path) -> None:
-    fig, ax = plt.subplots(figsize=(5.0, 3.0))
+    fig, ax = plt.subplots(figsize=(5.5, 3.0))  # the paper's text width, so fonts print at their set size
     x = np.arange(len(LENGTH_SETTINGS))
     for method in LEARNED:
         scheme, obs = split(method)
@@ -114,7 +115,7 @@ def fig_length_generalization(summary: pd.DataFrame, out: Path) -> None:
     ax.set_xlabel("Chain length")
     ax.set_ylabel("Success rate")
     ax.set_ylim(0, 1)
-    ax.legend(fontsize=6.5, loc="center left", bbox_to_anchor=(1.0, 0.5))
+    ax.legend(fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, -0.26), ncol=2)
     save(fig, out, "length_generalization")
 
 
@@ -137,7 +138,7 @@ def curve_band(curves: pd.DataFrame, method: str, column: str) -> tuple[np.ndarr
 
 
 def fig_learning_curves(curves: pd.DataFrame, summary: pd.DataFrame, out: Path, methods: list[str]) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.6), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(5.5, 2.6), sharey=True)
     for ax, (setting, title) in zip(axes, PANELS, strict=True):
         for method in methods:
             scheme, obs = split(method)
@@ -158,13 +159,14 @@ def fig_learning_curves(curves: pd.DataFrame, summary: pd.DataFrame, out: Path, 
         ax.set_xlabel("Training episodes (thousands)")
         ax.set_ylim(0, 1)
     axes[0].set_ylabel("Greedy success rate")
-    axes[1].legend(fontsize=6.5, loc="center left", bbox_to_anchor=(1.0, 0.5))
+    handles, labels = axes[1].get_legend_handles_labels()
+    fig.legend(handles, labels, fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, -0.04), ncol=2)
     save(fig, out, "learning_curves")
 
 
 def fig_churn(curves: pd.DataFrame, out: Path, methods: tuple[str, ...] = ("ma_inv", "ma_abs")) -> None:
     """Per-seed greedy success during training: policies switch abruptly between solutions."""
-    fig, axes = plt.subplots(1, len(methods), figsize=(7.0, 2.4), sharey=True)
+    fig, axes = plt.subplots(1, len(methods), figsize=(5.5, 2.2), sharey=True)
     for ax, method in zip(axes, methods, strict=True):
         scheme, _ = split(method)
         sub = curves[curves.method == method]
@@ -182,7 +184,7 @@ def fig_churn(curves: pd.DataFrame, out: Path, methods: tuple[str, ...] = ("ma_i
 def fig_selectivity(summary: pd.DataFrame, out: Path) -> None:
     methods = LEARNED + ["cue_triggered", "verify_every_step"]
     names = [label(m) if m in LEARNED else m.replace("_", " ").capitalize() + " (heuristic)" for m in methods]
-    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.8), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(5.5, 3.0), sharey=True)
     y = np.arange(len(methods))[::-1]
     for ax, (setting, title) in zip(axes, PANELS, strict=True):
         for yi, method in zip(y, methods, strict=True):
@@ -195,10 +197,10 @@ def fig_selectivity(summary: pd.DataFrame, out: Path) -> None:
         ax.set_title(title, fontsize=8.5)
         ax.set_xlim(-0.03, 1.03)
         ax.set_xlabel("P(VERIFY | unchecked step)")
-    axes[0].set_yticks(y, names, fontsize=7)
+    axes[0].set_yticks(y, names, fontsize=7.5)
     axes[0].scatter([], [], s=22, facecolor="white", edgecolor=INK_2, label="unchecked step, cue = 0")
     axes[0].scatter([], [], s=22, color=INK_2, label="unchecked step, cue = 1")
-    fig.legend(fontsize=7, loc="upper center", ncol=2, bbox_to_anchor=(0.62, 1.04))
+    fig.legend(fontsize=7.5, loc="upper center", ncol=2, bbox_to_anchor=(0.6, 1.06))
     save(fig, out, "cue_selectivity")
 
 
@@ -417,7 +419,10 @@ def extreme_macros(stats: dict[str, float | str], keys: dict[str, str], name: st
     and 'between' statements are computed rather than picked by hand. ``name`` must end in
     ``_rate`` for percentage versions to be written."""
     head, _, tail = name.rpartition("/")
-    values = {label: stats[key] for label, key in keys.items() if key in stats}
+    missing = [key for key in keys.values() if key not in stats]
+    if missing or not keys:
+        raise KeyError(f"{name}: no result for {missing or 'any key'}")  # an extreme over fewer results would mislead
+    values = {label: stats[key] for label, key in keys.items()}
     out: dict[str, float | str] = {}
     for which, pick in (("min", min), ("max", max)):
         label = pick(values, key=values.get)
@@ -799,6 +804,20 @@ def with_probe_derived(probe: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def unaffordable_macros(probe: pd.DataFrame) -> dict[str, float | str]:
+    """How many post-UNSAFE points the probe leaves out because the repair no longer fits in the
+    budget: the largest share for any probed agent (pooled over its seeds), and how many
+    individual checkpoints (with any post-UNSAFE point) lose more than half."""
+    total = probe.unaffordable_points + probe.unsafe_points
+    rows, rate = probe[total > 0], (probe.unaffordable_points / total)[total > 0]
+    pooled = rows.groupby(["method", "checkpoint"])[["unaffordable_points", "unsafe_points"]].sum()
+    return {
+        "probe/unaffordable/pooled_max_rate": float((pooled.unaffordable_points / pooled.sum(axis=1)).max()),
+        "probe/unaffordable/over_half": str(int((rate > 0.5).sum())),
+        "probe/unaffordable/checkpoints": str(len(rows)),
+    }
+
+
 def probe_macros(probe: pd.DataFrame) -> dict[str, float | str]:
     """Mean over seeds (and t-interval) of the post-UNSAFE value probe (scripts/q_probe.py)."""
     out: dict[str, float | str] = {}
@@ -967,20 +986,33 @@ def write_macros(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--results", default="results")
-    parser.add_argument("--paper", default="paper")
-    args = parser.parse_args(argv)
-    results, paper = Path(args.results), Path(args.paper)
-    figures, tables = paper / "figures", paper / "tables"
-    tables.mkdir(parents=True, exist_ok=True)
+@dataclass
+class Report:
+    """What the per-experiment steps of :func:`main` share: inputs, outputs and the macros so far."""
 
+    results: Path
+    figures: Path
+    tables: Path
+    summary: pd.DataFrame  # main experiment
+    per_seed: pd.DataFrame
+    curves: pd.DataFrame
+    summaries: dict[str, pd.DataFrame] = field(default_factory=dict)
+    extras: dict[str, float | str] = field(default_factory=dict)
+    followup_methods: list[str] = field(default_factory=list)
+    probe: pd.DataFrame | None = None
+
+
+def report_main(r: Report) -> None:
+    """Figures, tables and statistics of the main experiment."""
+    summary, per_seed, curves, figures, tables, results = (
+        r.summary,
+        r.per_seed,
+        r.curves,
+        r.figures,
+        r.tables,
+        r.results,
+    )
     main_dir = results / "main"
-    summary = pd.read_csv(main_dir / "eval_summary.csv")
-    per_seed = pd.read_csv(main_dir / "eval_per_seed.csv")
-    curves = load_curves(main_dir)
-
     fig_length_generalization(summary, figures)
     fig_learning_curves(curves, summary, figures, LEARNED)
     fig_selectivity(summary, figures)
@@ -994,8 +1026,9 @@ def main(argv: list[str] | None = None) -> None:
     comparisons = key_numbers(per_seed)
     comparisons.to_csv(main_dir / "key_comparisons.csv", index=False)
 
-    summaries = {"main": summary}
-    extras = curve_stats(curves, per_seed)
+    r.summaries["main"] = summary
+    summaries, extras = r.summaries, r.extras
+    extras.update(curve_stats(curves, per_seed))
     extras.update(comparison_macros(comparisons))
     curve_pairs = [("ma_inv", "outcome_inv"), ("naive_inv", "outcome_inv")]
     extras.update(comparison_macros(curve_comparisons(curves, curve_pairs)))
@@ -1010,49 +1043,75 @@ def main(argv: list[str] | None = None) -> None:
             if name == "sensitivity":  # the encoder comparison; the reward comparison has its own table
                 shown = shown[shown.method.str.startswith(("ma_abs", "ma_inv"))]
             table_ablation(shown, tables, name=f"{name}_results")
-    if "ablations" in summaries:
-        table_ablation(summaries["ablations"], tables, name="ablations_results_final", suffix=FINAL)
-        ablation_seeds = pd.read_csv(results / "ablations" / "eval_per_seed.csv")
-        extras.update(curve_stats(load_curves(results / "ablations"), ablation_seeds, prefix="ablations"))
-        variants = [m for m in summaries["ablations"].method.unique() if m != "ma_inv" and not m.endswith(FINAL)]
-        pairs = [("ma_inv", m, s) for m in variants for s in ("train_like", "heldout_long", "heldout_xlong")]
-        pairs += [(f"ma_inv{FINAL}", f"{m}{FINAL}", s) for m in variants if m != "no_revise" for s in LENGTHS]
-        extras.update(comparison_macros(key_numbers(ablation_seeds, pairs), prefix="abl"))
-        paying = [(m, "train_like") for m in CHECK_PAYING]
-        extras.update(success_range(summaries["ablations"], "ablations/check_paying/train_like", paying))
-        paying = [(m + FINAL, "train_like") for m in CHECK_PAYING]
-        extras.update(success_range(summaries["ablations"], f"ablations/check_paying{FINAL}/train_like", paying))
-        # variants against the main experiment's outcome-only agents (same evaluation episodes per seed)
-        own = ablation_seeds.method.isin(variants + [m + FINAL for m in variants])
-        joint = pd.concat([per_seed, ablation_seeds[own]], ignore_index=True)
-        pairs = [(m, "outcome_inv", s) for m in ("no_cue_terms", "no_monitor_terms") for s in LENGTHS]
-        pairs += [(f"no_cue_terms{FINAL}", f"outcome_inv{FINAL}", "heldout_xlong")]
-        extras.update(comparison_macros(key_numbers(joint, pairs)))
-    if "sensitivity" in summaries:
-        sensitivity_seeds = pd.read_csv(results / "sensitivity" / "eval_per_seed.csv")
-        tags = sorted({m.removeprefix("ma_inv_") for m in summaries["sensitivity"].method if m.startswith("ma_inv_")})
-        tags = [t for t in tags if not t.endswith(FINAL)]
-        methods = set(summaries["sensitivity"].method)
-        pairs = [
-            (f"ma_inv_{t}", f"ma_abs_{t}", s)
-            for t in tags
-            if f"ma_abs_{t}" in methods
-            for s in ("heldout_long", "heldout_xlong")
-        ]
-        for t in tags:
-            for a, b in (("ma", "outcome"), ("ma", "naive"), ("naive", "outcome")):
-                if {f"{a}_inv_{t}", f"{b}_inv_{t}"} <= methods:
-                    pairs += [(f"{a}_inv_{t}", f"{b}_inv_{t}", s) for s in LENGTHS]
-        extras.update(comparison_macros(key_numbers(sensitivity_seeds, pairs), prefix="sens"))
-        extras.update(curve_stats(load_curves(results / "sensitivity"), sensitivity_seeds, prefix="sensitivity"))
-        if {f"{s}_inv_{t}" for s in SCHEMES for t in ("lr3e-4", "sync1000", "polyak")} <= methods:
-            table_sensitivity_rewards(summary, summaries["sensitivity"], extras, tables)
+
+
+def report_ablations(r: Report) -> None:
+    """Reward ablations."""
+    per_seed, tables, results, summaries, extras = r.per_seed, r.tables, r.results, r.summaries, r.extras
+    if "ablations" not in summaries:
+        return
+    table_ablation(summaries["ablations"], tables, name="ablations_results_final", suffix=FINAL)
+    ablation_seeds = pd.read_csv(results / "ablations" / "eval_per_seed.csv")
+    extras.update(curve_stats(load_curves(results / "ablations"), ablation_seeds, prefix="ablations"))
+    variants = [m for m in summaries["ablations"].method.unique() if m != "ma_inv" and not m.endswith(FINAL)]
+    for metric in ("collapse_lowdetect_rate", "collapse_norepair_rate"):  # the variant without REVISE cannot repair
+        keys = {m: f"ablations/{m}/{metric}" for m in variants if m != "no_revise"}
+        extras.update(extreme_macros(extras, keys, f"extremes/ablations/{metric}"))
+    pairs = [("ma_inv", m, s) for m in variants for s in ("train_like", "heldout_long", "heldout_xlong")]
+    pairs += [(f"ma_inv{FINAL}", f"{m}{FINAL}", s) for m in variants if m != "no_revise" for s in LENGTHS]
+    extras.update(comparison_macros(key_numbers(ablation_seeds, pairs), prefix="abl"))
+    paying = [(m, "train_like") for m in CHECK_PAYING]
+    extras.update(success_range(summaries["ablations"], "ablations/check_paying/train_like", paying))
+    paying = [(m + FINAL, "train_like") for m in CHECK_PAYING]
+    extras.update(success_range(summaries["ablations"], f"ablations/check_paying{FINAL}/train_like", paying))
+    # variants against the main experiment's outcome-only agents (same evaluation episodes per seed)
+    own = ablation_seeds.method.isin(variants + [m + FINAL for m in variants])
+    joint = pd.concat([per_seed, ablation_seeds[own]], ignore_index=True)
+    pairs = [(m, "outcome_inv", s) for m in ("no_cue_terms", "no_monitor_terms") for s in LENGTHS]
+    pairs += [(f"no_cue_terms{FINAL}", f"outcome_inv{FINAL}", "heldout_xlong")]
+    extras.update(comparison_macros(key_numbers(joint, pairs)))
+
+
+def report_sensitivity(r: Report) -> None:
+    """Learner-setting and training-length checks."""
+    summary, tables, results, summaries, extras = r.summary, r.tables, r.results, r.summaries, r.extras
+    if "sensitivity" not in summaries:
+        return
+    sensitivity_seeds = pd.read_csv(results / "sensitivity" / "eval_per_seed.csv")
+    tags = sorted({m.removeprefix("ma_inv_") for m in summaries["sensitivity"].method if m.startswith("ma_inv_")})
+    tags = [t for t in tags if not t.endswith(FINAL)]
+    methods = set(summaries["sensitivity"].method)
+    pairs = [
+        (f"ma_inv_{t}", f"ma_abs_{t}", s)
+        for t in tags
+        if f"ma_abs_{t}" in methods
+        for s in ("heldout_long", "heldout_xlong")
+    ]
+    for t in tags:
+        for a, b in (("ma", "outcome"), ("ma", "naive"), ("naive", "outcome")):
+            if {f"{a}_inv_{t}", f"{b}_inv_{t}"} <= methods:
+                pairs += [(f"{a}_inv_{t}", f"{b}_inv_{t}", s) for s in LENGTHS]
+    extras.update(comparison_macros(key_numbers(sensitivity_seeds, pairs), prefix="sens"))
+    extras.update(curve_stats(load_curves(results / "sensitivity"), sensitivity_seeds, prefix="sensitivity"))
+    for scheme in ("outcome", "ma"):
+        keys = {m: f"sensitivity/{m}/collapse_rate" for m in methods
+                if m.startswith(f"{scheme}_inv_") and not m.endswith(FINAL)}  # fmt: skip
+        if keys:
+            extras.update(extreme_macros(extras, keys, f"extremes/sensitivity_{scheme}/collapse_rate"))
+    if {f"{s}_inv_{t}" for s in SCHEMES for t in ("lr3e-4", "sync1000", "polyak")} <= methods:
+        table_sensitivity_rewards(summary, summaries["sensitivity"], extras, tables)
+
+
+def report_analyses(r: Report) -> None:
+    """The archived pilot and the analyses of saved checkpoints (probe, coverage, inspection)."""
+    tables, results, extras = r.tables, r.results, r.extras
     if (results / "pilot").exists():
         table_pilot(results / "pilot", tables)
     probe_path = results / "q_probe.csv"
     if probe_path.exists():
-        probe = pd.read_csv(probe_path)
+        probe = r.probe = pd.read_csv(probe_path)
         extras.update(probe_macros(probe))
+        extras.update(unaffordable_macros(probe))
         extras.update(probe_range_macros(probe))
     coverage_path = results / "observation_coverage.csv"
     if coverage_path.exists():
@@ -1071,12 +1130,19 @@ def main(argv: list[str] | None = None) -> None:
             name = method + ("" if which == "best" else FINAL)
             for column, macro in AGENT_COVERAGE.items():
                 extras[f"agentcov/{name}/{setting}/{macro}"] = c[column]
+
+
+def report_followups(r: Report) -> None:
+    """Follow-up interventions: pending bit, action histories, memory bit, repair payment."""
+    summary, per_seed, tables, results = r.summary, r.per_seed, r.tables, r.results
+    summaries, extras = r.summaries, r.extras
     followup_dir = results / "followups"
     if (followup_dir / "eval_summary.csv").exists():
         summaries["followups"] = pd.read_csv(followup_dir / "eval_summary.csv")
 
         joint = pd.concat([per_seed, pd.read_csv(followup_dir / "eval_per_seed.csv")], ignore_index=True)
-        followup_methods = [m for m in summaries["followups"].method.unique() if not m.endswith(FINAL)]
+        followup_methods = r.followup_methods = [m for m in summaries["followups"].method.unique()
+                                                 if not m.endswith(FINAL)]  # fmt: skip
         pairs = [(m, FOLLOWUP_REFERENCE, s) for m in followup_methods for s in LENGTHS]
         pairs += [(m + FINAL, FOLLOWUP_REFERENCE + FINAL, s) for m in followup_methods for s in LENGTHS]
         extras.update(comparison_macros(key_numbers(joint, pairs)))
@@ -1111,12 +1177,21 @@ def main(argv: list[str] | None = None) -> None:
                 extras[f"ratio/{obs}/late_failure"] = failure["outcome"] / failure["ma"]
         ratios = {k: k for k in extras if k.startswith("ratio/") and k.endswith("/late_failure")}
         extras.update(extreme_macros(extras, ratios, "extremes/ratios/late_failure"))
+        windows3 = {m: f"followups/{m}/collapse_rate" for m in followup_methods if m.endswith("_history3")}
+        if windows3:
+            extras.update(extreme_macros(extras, windows3, "extremes/history3/collapse_rate"))
         histories = [(m, "train_like") for m in followup_methods if m.endswith(("_history", "_history3"))]
         if histories:
             extras.update(success_range(summaries["followups"], "followups/histories/train_like", histories))
         table_followups(summary, summaries["followups"], extras, tables)
         if {f"{s}_pending" for s in SCHEMES} <= set(followup_methods):
             table_pending(summary, summaries["followups"], extras, tables)
+
+
+def report_process(r: Report) -> None:
+    """The step-bonus sweep."""
+    summary, per_seed, curves, tables, results = r.summary, r.per_seed, r.curves, r.tables, r.results
+    summaries, extras = r.summaries, r.extras
     process_dir = results / "process"
     if (process_dir / "eval_summary.csv").exists():
         summaries["process"] = pd.read_csv(process_dir / "eval_summary.csv")
@@ -1148,6 +1223,11 @@ def main(argv: list[str] | None = None) -> None:
                                     [(m, "train_like") for m in variants]))  # fmt: skip
         configs = {name: load_experiment(results / name / "config.yaml") for name in ("main", "process")}
         table_process(summary, summaries["process"], extras, configs, tables)
+
+
+def report_extremes(r: Report) -> None:
+    """ "At most" and "between" statements that span experiments."""
+    summaries, extras, followup_methods = r.summaries, r.extras, r.followup_methods
     if {"ablations", "followups"} <= set(summaries):
         # check-paying variants (the variant without REVISE cannot repair, so it is not one)
         paying = {m: f"ablations/{m}/collapse_lowdetect_rate" for m in CHECK_PAYING}
@@ -1155,6 +1235,12 @@ def main(argv: list[str] | None = None) -> None:
         extras.update(extreme_macros(extras, paying, "extremes/check_paying/collapse_lowdetect_rate"))
     rewards = {s: f"main/{s}_inv/collapse_norepair_rate" for s in SCHEMES}
     extras.update(extreme_macros(extras, rewards, "extremes/main_inv/collapse_norepair_rate"))
+
+
+def report_encoders(r: Report) -> None:
+    """The position-feature encoder control."""
+    summary, per_seed, tables, results = r.summary, r.per_seed, r.tables, r.results
+    summaries, extras = r.summaries, r.extras
     encoder_dir = results / "encoders"
     if (encoder_dir / "eval_summary.csv").exists():
         summaries["encoders"] = pd.read_csv(encoder_dir / "eval_summary.csv")
@@ -1164,14 +1250,30 @@ def main(argv: list[str] | None = None) -> None:
         extras.update(unrepaired_loss_macros(pd.read_csv(encoder_dir / "eval_per_seed.csv"), "encoders"))
         if "coverage/absolute_nopos/heldout_xlong/unseen_rate" in extras:
             table_encoders(summary, summaries["encoders"], extras, tables)
-    if probe_path.exists() and "followups" in summaries:
-        table_probe(probe, extras, tables)
-    extras.update(compute_macros(results, list(summaries)))
-    for name in summaries:
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--results", default="results")
+    parser.add_argument("--paper", default="paper")
+    args = parser.parse_args(argv)
+    results, paper = Path(args.results), Path(args.paper)
+    figures, tables = paper / "figures", paper / "tables"
+    tables.mkdir(parents=True, exist_ok=True)
+    main_dir = results / "main"
+    r = Report(results, figures, tables, pd.read_csv(main_dir / "eval_summary.csv"),
+               pd.read_csv(main_dir / "eval_per_seed.csv"), load_curves(main_dir))  # fmt: skip
+    for step in (report_main, report_ablations, report_sensitivity, report_analyses, report_followups,
+                 report_process, report_extremes, report_encoders):  # fmt: skip
+        step(r)
+    if r.probe is not None and "followups" in r.summaries:
+        table_probe(r.probe, r.extras, tables)
+    r.extras.update(compute_macros(results, list(r.summaries)))
+    for name in r.summaries:
         runs = results / name / "train_runs.csv"
         if runs.exists():
-            extras.update(selection_macros(pd.read_csv(runs), name))
-    write_macros(paper / "numbers.tex", summaries, extras, used_macros(paper))
+            r.extras.update(selection_macros(pd.read_csv(runs), name))
+    write_macros(paper / "numbers.tex", r.summaries, r.extras, used_macros(paper))
     print(f"[report] wrote figures to {figures}, tables to {tables} and {paper / 'numbers.tex'}")
 
 
