@@ -1,0 +1,11 @@
+{
+  "config_sha256": "a302a4bf06be3f681762c8f2a52b3d68f24022cb1ad18f5b0b32f9f61c41406e",
+  "smoke": false,
+  "platform": {
+    "python": "3.13.16",
+    "torch": "2.14.1+cpu",
+    "numpy": "2.5.4",
+    "platform": "Linux-6.18.44-fc-v140-x86_64-with-glibc2.39",
+    "cpu_capability": "AVX512"
+  }
+}

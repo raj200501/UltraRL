@@ -3,15 +3,21 @@
     python scripts/compare_checkpoints.py results/main results_repro/main
 
 Used by `make reproduce` to verify that retraining from scratch reproduces the
-saved agents exactly (training is deterministic on CPU given a seed).
+saved agents exactly. Training is deterministic on CPU given a seed, but only for
+the same package versions and CPU instruction set: torch's CPU kernels round
+differently with AVX-512, AVX2 or no vector extensions, and a different rounding
+changes the whole trajectory. On other hardware, compare the results
+statistically instead (scripts/compare_summaries.py).
 """
 
+import json
 import sys
 from pathlib import Path
 
 import torch
 
 from ultrarl.dqn import DQNAgent
+from ultrarl.run import platform_info
 
 
 def main(reference: str, candidate: str) -> int:
@@ -36,6 +42,11 @@ def main(reference: str, candidate: str) -> int:
     for label, names in (("missing", missing), ("unexpected", extra), ("differs", mismatched)):
         for name in names:
             print(f"  {label}: {name}")
+    if mismatched:
+        info = Path(reference) / "run_info.json"
+        recorded = json.loads(info.read_text()).get("platform", "not recorded") if info.exists() else "not recorded"
+        print(f"  reference platform: {recorded}\n  this platform:      {platform_info()}")
+        print("  bitwise identity needs the same package versions and CPU capability; see compare_summaries.py")
     return 1 if (missing or extra or mismatched) else 0
 
 

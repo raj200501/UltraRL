@@ -83,3 +83,13 @@ def test_eval_stage_refuses_checkpoints_from_a_different_config(tmp_path):
     with pytest.raises(RuntimeError, match="budget_extra"):
         main(["--config", str(changed), "--out", str(out), "--smoke", "--workers", "1", "--stage", "eval"])
     assert (out / "config.yaml").read_text() == CONFIG.read_text()  # provenance untouched
+
+
+def test_config_fields_added_after_a_checkpoint_must_keep_their_default():
+    from ultrarl.config import EnvConfig
+    from ultrarl.run import _config_mismatches
+
+    recorded = {k: v for k, v in vars(EnvConfig()).items() if k != "ma_fault_bonus_on_repair"}
+    assert _config_mismatches(EnvConfig(), recorded) == []  # an older checkpoint without the field
+    problems = _config_mismatches(EnvConfig(ma_fault_bonus_on_repair=True), recorded)
+    assert len(problems) == 1 and problems[0].startswith("ma_fault_bonus_on_repair")

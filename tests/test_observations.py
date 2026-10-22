@@ -77,3 +77,18 @@ def test_history_window_codes_order_and_padding():
     window = obs[9:].reshape(HISTORY_STEPS, HISTORY_CODES)
     assert not window[:4].any()  # zero padding before the first action, oldest first
     assert [int(np.argmax(r)) for r in window[4:]] == [0, 0, 2, 3]  # THINK, THINK, UNSAFE, REVISE
+
+
+def test_short_history_keeps_only_the_last_three_actions():
+    from ultrarl.observations import HISTORY_CODES, observation_dim
+
+    env = ChainEnv(EnvConfig(observation="history3"))
+    env.reset(seed=0, depth_range=(5, 5), fault_index=1)
+    for a in (T, T, V, R):
+        obs = env.step(a)[0]
+    assert obs.shape == (observation_dim("history3"),) == (9 + 3 * HISTORY_CODES,)
+    window = obs[9:].reshape(3, HISTORY_CODES)
+    assert [int(np.argmax(r)) for r in window] == [0, 2, 3]  # THINK, UNSAFE, REVISE
+    env.reset(seed=0, depth_range=(5, 5))
+    obs = env.step(T)[0]
+    assert not obs[9:19].any() and obs[19] == 1.0  # padded, then the one THINK

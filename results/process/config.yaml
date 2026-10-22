@@ -1,0 +1,71 @@
+# Step-correctness sweep: the naive process reward is the one closest to a learned
+# process reward model, and the main experiment uses a single, untuned setting of it
+# (0.015 per correct step plus a 0.02 token payment for informative checks). Here
+# the two terms are separated and the step bonus is scaled up, with invariant
+# observations. Same training as main; compared with main/outcome_inv and
+# main/naive_inv on the same evaluation episodes.
+name: process
+
+env:
+  train_depth_range: [3, 6]
+  max_depth: 9
+  p_fault: 0.8
+  fault_profile: middle
+  fault_peak_weight: 5.0
+  cue_hit_rate: 0.85
+  cue_false_positive_rate: 0.15
+  budget_extra: 6
+
+train:
+  episodes: 20000
+  learning_rate: 0.001
+  hidden_size: 64
+  batch_size: 64
+  replay_size: 25000
+  warmup_steps: 500
+  target_update_interval: 200
+  epsilon_start: 0.5
+  epsilon_end: 0.02
+  epsilon_decay_fraction: 0.85
+  curve_interval: 1000
+  curve_episodes: 200
+
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+methods:
+  - name: naive_check_only
+    display_name: "check payment 0.02 only"
+    env_overrides: {reward_scheme: naive_process, observation: invariant, naive_progress_bonus: 0.0}
+  - name: naive_step015
+    display_name: "step bonus 0.015 only"
+    env_overrides: {reward_scheme: naive_process, observation: invariant, naive_verify_bonus: 0.0}
+  - name: naive_step05
+    display_name: "step bonus 0.05 only"
+    env_overrides: {reward_scheme: naive_process, observation: invariant, naive_verify_bonus: 0.0,
+                    naive_progress_bonus: 0.05}
+  - name: naive_step10
+    display_name: "step bonus 0.1 only"
+    env_overrides: {reward_scheme: naive_process, observation: invariant, naive_verify_bonus: 0.0,
+                    naive_progress_bonus: 0.1}
+
+evaluation:
+  episodes: 500
+  curve_settings:
+    - {name: train_like, depth_range: [3, 6]}
+    - {name: heldout_long, depth_range: [7, 9]}
+  settings:
+    - {name: train_like, depth_range: [3, 6]}
+    - {name: heldout_long, depth_range: [7, 9]}
+    - {name: heldout_xlong, depth_range: [10, 14]}
+
+# Tiny overrides used by `--smoke` and CI.
+smoke:
+  train: {episodes: 300, curve_interval: 150, curve_episodes: 20, warmup_steps: 100}
+  seeds: [0]
+  evaluation:
+    episodes: 30
+    curve_settings:
+      - {name: train_like, depth_range: [3, 6]}
+    settings:
+      - {name: train_like, depth_range: [3, 6]}
+      - {name: heldout_long, depth_range: [7, 9]}

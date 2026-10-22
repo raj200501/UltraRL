@@ -7,6 +7,8 @@
 #             under all three rewards (tests the state-aliasing explanation)
 #   history - the same, without the hand-made bit: the last 8 actions and check
 #             results, which the agent has to learn to use (all three rewards)
+#   history3 - control for history: only the last 3 actions, which show a caught
+#             fault but not position or progress (all three rewards)
 name: followups
 
 env:
@@ -66,6 +68,15 @@ methods:
   - name: naive_history
     display_name: "naive process + last 8 actions"
     env_overrides: {reward_scheme: naive_process, observation: history}
+  - name: ma_history3
+    display_name: "+ last 3 actions"
+    env_overrides: {reward_scheme: monitorability_aware, observation: history3}
+  - name: outcome_history3
+    display_name: "outcome-only + last 3 actions"
+    env_overrides: {reward_scheme: outcome_only, observation: history3}
+  - name: naive_history3
+    display_name: "naive process + last 3 actions"
+    env_overrides: {reward_scheme: naive_process, observation: history3}
 
 evaluation:
   episodes: 500

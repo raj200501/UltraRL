@@ -15,7 +15,7 @@ from ultrarl.run import FINAL_SUFFIX, SUMMARY_METRICS
 from ultrarl.stats import summarize
 
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
-EXPERIMENTS = ("main", "ablations", "sensitivity", "followups", "encoders")
+EXPERIMENTS = ("main", "ablations", "sensitivity", "followups", "encoders", "process")
 
 
 def _fake_experiment(root: Path, name: str, rng: np.random.Generator, seeds=(0, 1, 2)) -> None:
@@ -39,8 +39,9 @@ def _fake_experiment(root: Path, name: str, rng: np.random.Generator, seeds=(0, 
     )
     episodes = np.arange(1000, 21000, 1000)
     pd.DataFrame(
-        [{"method": m.name, "seed": seed, "selected_episode": int(rng.choice(episodes)), "wall_seconds": 240.0,
-          "selection_success": float(rng.uniform())} for m in exp.learned_methods for seed in seeds]
+        [{"method": m.name, "seed": seed, "episodes": 20000, "selected_episode": int(rng.choice(episodes)),
+          "wall_seconds": 240.0, "selection_success": float(rng.uniform())} for m in exp.learned_methods
+         for seed in seeds]
     ).to_csv(out / "train_runs.csv", index=False)  # fmt: skip
     for m in exp.learned_methods:
         for seed in seeds:
@@ -69,8 +70,22 @@ def generated(tmp_path_factory):
             for s in ("heldout_long", "heldout_xlong")
         ]
     ).to_csv(tmp / "results" / "observation_coverage.csv", index=False)
+    pd.DataFrame(
+        [
+            {"method": "ma_history", "seed": seed, "setting": "heldout_xlong", "unseen_fraction": 0.3,
+             "uncued_check_seen": 0.6, "uncued_check_unseen": np.nan if seed else 0.1, "whole_episode_in_window": 0.5}
+            for seed in range(3)
+        ]
+    ).to_csv(tmp / "results" / "agent_coverage.csv", index=False)  # fmt: skip
     probe = [
-        {"method": m, "checkpoint": which, "seed": seed, **{k: float(rng.uniform()) for k in report.PROBE_METRICS}}
+        {
+            "method": m,
+            "checkpoint": which,
+            "seed": seed,
+            "unsafe_points": 40,
+            "unaffordable_points": 10,
+            **{k: float(rng.uniform()) for k in report.PROBE_METRICS},
+        }
         for m in ("ma_inv", "ma_repair")
         for which in ("best", "final")
         for seed in range(3)
@@ -104,6 +119,7 @@ def test_report_writes_every_figure_and_table(generated):
         "pilot_results",
         "probe_results",
         "pending_results",
+        "process_results",
         "followup_results",
         "encoder_results",
     ):
@@ -202,3 +218,42 @@ def test_unrepaired_loss_counts_seeds_without_detections_as_zero():
         }
     )
     assert report.unrepaired_loss_macros(per_seed, "x")["x/m/s/unrepaired_rate"] == pytest.approx(0.1)
+
+
+def test_compute_macros_counts_untimed_runs_at_the_mean_for_their_length(tmp_path):
+    for name, rows in {
+        "a": [(20000, 100.0), (20000, np.nan), (40000, 400.0)],
+        "b": [(20000, 300.0)],
+    }.items():
+        (tmp_path / name).mkdir()
+        frame = pd.DataFrame(rows, columns=["episodes", "wall_seconds"]).assign(method="m", seed=range(len(rows)))
+        frame.to_csv(tmp_path / name / "train_runs.csv", index=False)
+    (tmp_path / "ablations").mkdir()  # its ma_inv runs repeat the main experiment's and count once
+    shared = pd.DataFrame({"method": ["ma_inv", "x"], "seed": 0, "episodes": 20000, "wall_seconds": [3600.0, 7200.0]})
+    shared.to_csv(tmp_path / "ablations" / "train_runs.csv", index=False)
+    macros = report.compute_macros(tmp_path, ["a", "b", "ablations"])
+    assert macros["runs/untimed"] == "1" and macros["runs/saved"] == "6" and macros["runs/distinct"] == "5"
+    assert macros["runs/ablations/own"] == "1"
+    mean_20k = (100 + 300 + 3600 + 7200) / 4  # the untimed 20k-episode run counts at this
+    distinct = (100 + mean_20k + 400 + 300 + 7200) / 3600
+    assert macros["runs/core_hours"] == f"{distinct:.0f}"
+    assert macros["runs/reproduce_hours_on_4_cores"] == f"{(distinct + 1) / 4:.0f}"
+
+
+def test_curve_comparisons_pair_late_success_and_first_crossing_by_seed():
+    rows = []
+    for seed in range(3):
+        for method, values in {"a": [0.6, 0.9, 0.9], "b": [0.2, 0.6, 0.5 + 0.1 * seed]}.items():
+            rows += [{"method": method, "seed": seed, "episode": e, "train_like_success": v}
+                     for e, v in zip([1000, 6000, 7000], values, strict=True)]  # fmt: skip
+    frame = report.curve_comparisons(pd.DataFrame(rows), [("a", "b")]).set_index("metric")
+    assert frame.loc["late_success", "mean"] == pytest.approx(0.9 - np.mean([0.55, 0.6, 0.65]))
+    assert frame.loc["late_success", "n_positive"] == 3
+    assert frame.loc["first_above_half", "mean"] == pytest.approx(-5000)  # a crosses at 1,000, b at 6,000
+
+
+def test_every_result_the_paper_references_is_in_the_committed_numbers():
+    paper = Path(__file__).resolve().parents[1] / "paper"
+    defined = set(re.findall(r"\\csname ur@(.+?)\\endcsname", (paper / "numbers.tex").read_text(encoding="utf-8")))
+    missing = report.used_macros(paper) - defined
+    assert not missing, sorted(missing)[:10]

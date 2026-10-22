@@ -4,8 +4,9 @@
 
 Each checkpoint is rolled out greedily on training-length evaluation episodes.
 
-* At every decision point where the last check reported UNSAFE and both REVISE
-  and THINK are available, we record the greedy action, the learned values
+* At every decision point where the last check reported UNSAFE, both REVISE
+  and THINK are available and the budget still allows the repair (undoing and
+  redoing the step leaves enough to finish the chain), we record the greedy action, the learned values
   Q(REVISE) and Q(THINK), and their true discounted returns under the same
   greedy policy, obtained by playing each action out from a copy of the
   environment (episodes are deterministic once reset, so this is exact).
@@ -48,6 +49,9 @@ METHODS = {
         "outcome_history",
         "naive_history",
         "ma_history",
+        "outcome_history3",
+        "naive_history3",
+        "ma_history3",
     ],  # fmt: skip
 }
 SETTING = "train_like"
@@ -81,7 +85,8 @@ def discounted_suffix_sums(rewards: list[float], gamma: float) -> np.ndarray:
 def probe(agent: DQNAgent, env: ChainEnv, seed: int, depth_range: tuple[int, int], gamma: float) -> dict[str, float]:
     q_think, q_revise, g_think, g_revise, think = [], [], [], [], []
     q_track, g_track, q_start, g_start = [], [], [], []
-    on_track, past_fault = set(), []
+    on_track, past_fault, unaffordable = set(), [], 0
+    repair_cost = env.cfg.revise_cost + env.cfg.think_cost
     for i in range(EPISODES):
         obs = env.reset(seed=episode_seed(EVAL_STREAM, seed, i, SETTING), depth_range=depth_range)
         done, rewards, track_points = False, [], []
@@ -95,7 +100,11 @@ def probe(agent: DQNAgent, env: ChainEnv, seed: int, depth_range: tuple[int, int
             if env.belief_valid and not pending:
                 on_track.add(key(obs))
                 track_points.append((len(rewards), float(np.max(np.where(mask, q, -np.inf)))))
-            if env.observable().last_verify == VerifyStatus.UNSAFE and mask[Action.REVISE] and mask[Action.THINK]:
+            o = env.observable()
+            after_unsafe = o.last_verify == VerifyStatus.UNSAFE and mask[Action.REVISE] and mask[Action.THINK]
+            if after_unsafe and o.slack < repair_cost:  # the repair is unaffordable: both actions lose
+                unaffordable += 1
+            elif after_unsafe:
                 q_think.append(q[Action.THINK])
                 q_revise.append(q[Action.REVISE])
                 g_think.append(greedy_return(agent, copy.deepcopy(env), Action.THINK, gamma, past_fault))
@@ -109,7 +118,7 @@ def probe(agent: DQNAgent, env: ChainEnv, seed: int, depth_range: tuple[int, int
         for t, value in track_points:
             q_track.append(value)
             g_track.append(returns[t])
-    stats = {"unsafe_points": len(think)}
+    stats = {"unsafe_points": len(think), "unaffordable_points": unaffordable}
     stats.update(q_on_track=float(np.mean(q_track)), return_on_track=float(np.mean(g_track)))
     stats.update(q_start=float(np.mean(q_start)), return_start=float(np.mean(g_start)))
     if think:

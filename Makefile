@@ -1,6 +1,6 @@
 PYTHON ?= python
 WORKERS ?= 4
-EXPERIMENTS := main ablations sensitivity followups encoders
+EXPERIMENTS := main ablations sensitivity followups encoders process
 
 .PHONY: install test lint smoke analyses report paper experiments reproduce equivalence clean $(EXPERIMENTS)
 
@@ -18,8 +18,9 @@ smoke:  ## ~30 s end-to-end run of the whole pipeline in a scratch directory
 	rm -rf results/smoke
 	$(PYTHON) -m ultrarl.run --config configs/main.yaml --out results/smoke --smoke --workers $(WORKERS)
 
-analyses:  ## observation coverage and the post-UNSAFE value probe, from saved checkpoints (~8 min)
+analyses:  ## observation coverage (hand-coded and agents' own rollouts) and the value probe, from saved checkpoints (~20 min)
 	$(PYTHON) scripts/observation_coverage.py
+	$(PYTHON) scripts/agent_coverage.py
 	$(PYTHON) scripts/q_probe.py
 
 report:  ## every figure, table and number in the paper, from the saved results (no training)
@@ -35,8 +36,9 @@ $(EXPERIMENTS):
 
 experiments: $(EXPERIMENTS)
 
-# Retrain everything from scratch into results_repro/ (~6 h on 4 cores) and
-# check that every checkpoint is bitwise identical to the saved one.
+# Retrain everything from scratch into results_repro/ (~8 h on 4 cores) and
+# check that every checkpoint is bitwise identical to the saved one (same package
+# versions and an AVX-512 CPU; elsewhere use scripts/compare_summaries.py).
 reproduce:
 	@for exp in $(EXPERIMENTS); do \
 	  $(PYTHON) -m ultrarl.run --config configs/$$exp.yaml --out results_repro/$$exp --workers $(WORKERS) || exit 1; \

@@ -50,6 +50,12 @@ in whether, and how, they reveal position and chain length:
     leave the window while the repair is still pending, and the agent has to
     learn to use it.
 
+``history3`` (24-d), a control
+    ``history`` with only the last 3 actions. Enough to see a caught fault until
+    the repair or for two steps after skipping it, but it reveals little about
+    position or progress (only through padding in the first three steps), and
+    windows this short all occur on training-length chains.
+
 Budget slack ``b - (d - t)`` is the number of non-THINK actions the agent can
 still afford while finishing the chain.
 """
@@ -63,10 +69,11 @@ import numpy as np
 if TYPE_CHECKING:
     from ultrarl.env import Observable
 
-OBSERVATION_KINDS = ("absolute", "absolute_nopos", "invariant", "ratio", "memory", "pending", "history")
+OBSERVATION_KINDS = ("absolute", "absolute_nopos", "invariant", "ratio", "memory", "pending", "history", "history3")
 HISTORY_STEPS, HISTORY_CODES = 8, 5  # must match ultrarl.env.HISTORY_LENGTH and the THINK..COMMIT codes
+_WINDOWS = {"history": HISTORY_STEPS, "history3": 3}
 _DIMS = {"absolute": 10, "absolute_nopos": 8, "invariant": 9, "ratio": 10, "memory": 10, "pending": 10,
-         "history": 9 + HISTORY_STEPS * HISTORY_CODES}  # fmt: skip
+         **{kind: 9 + steps * HISTORY_CODES for kind, steps in _WINDOWS.items()}}  # fmt: skip
 SLACK_SCALE = 10.0
 GAP_CAP = 3
 
@@ -95,7 +102,7 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
         rest = [o.unchecked_gap / max(1, o.max_depth), float(o.cue), float(o.revised_recently), *_verify_one_hot(o)]
         # "absolute" keeps the original study's feature order
         features = [position[0], budget[0], position[1], budget[1], *rest] if kind == "absolute" else [*budget, *rest]
-    elif kind in ("invariant", "ratio", "memory", "pending", "history"):
+    elif kind in ("invariant", "ratio", "memory", "pending", *_WINDOWS):
         features = [
             float(o.step >= o.depth),
             float(o.step == 0),
@@ -111,8 +118,10 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
             features.append(float(o.fault_located))
         elif kind == "pending":
             features.append(float(o.repair_pending))
-        elif kind == "history":
-            padded = [0] * (HISTORY_STEPS - len(o.recent_events)) + list(o.recent_events)
+        elif kind in _WINDOWS:
+            steps = _WINDOWS[kind]
+            recent = list(o.recent_events[-steps:])
+            padded = [0] * (steps - len(recent)) + recent
             for code in padded:
                 one_hot = [0.0] * HISTORY_CODES
                 if code:

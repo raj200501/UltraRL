@@ -22,8 +22,9 @@ and differ only in the per-step *process* term added on top:
                              re-execution of the located fault)
     +ma_cue_verify_bonus     informative VERIFY of a step whose cue fired
     -ma_low_cue_penalty      informative SAFE VERIFY of a step whose cue did not fire
-    -ma_waste_verify_penalty uninformative VERIFY (repeat, or check downstream of an
-                             undetected fault)
+    -ma_waste_verify_penalty uninformative VERIFY (repeat, or check of a step whose
+                             running value is already wrong: downstream of an
+                             unrepaired fault, caught or not)
     -ma_gap_penalty * (g' - g) / depth   change in the unchecked gap g
 
 Here ``g = t - max(checked)`` is the number of steps executed since the

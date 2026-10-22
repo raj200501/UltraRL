@@ -25,6 +25,7 @@ import hashlib
 import json
 import multiprocessing as mp
 import os
+import platform
 import time
 from pathlib import Path
 from typing import Any
@@ -234,8 +235,22 @@ def _check_output_dir(out: Path, config_path: str, smoke: bool) -> None:
             print(f"[run] note: {config_path} differs from the config recorded in {out}", flush=True)
 
 
+def platform_info() -> dict[str, str]:
+    """Software and hardware that bitwise reproduction depends on (CPU kernels differ by instruction set)."""
+    import numpy
+
+    return {
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+        "numpy": numpy.__version__,
+        "platform": platform.platform(),
+        "cpu_capability": torch.backends.cpu.get_cpu_capability(),
+    }
+
+
 def _record_provenance(out: Path, config_path: str, smoke: bool) -> None:
     text, info = _provenance(config_path, smoke)
+    info["platform"] = platform_info()
     target = out / "config.yaml"
     if not (target.exists() and target.resolve() == Path(config_path).resolve()):
         target.write_text(text, encoding="utf-8")
