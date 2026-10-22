@@ -55,7 +55,7 @@ The monitorability-aware reward is a toy proxy for keeping a trajectory locally 
    - Ablations show that *any* term paying for informative checks recovers about 85–90% of the training-length gain.
    - On long chains, the cue terms matter. Without them, the unchecked-gap term rewards indiscriminate checking, agents run out of budget, and at lengths 10–14 the agents do worse than outcome-only.
 2. **Length generalization depends mainly on the observation encoder.**
-   - The original encoder's features depend on chain length. 100% of held-out observations are therefore novel, and every reward ends up *below* never-checking on lengths 10–14, mostly by committing before executing a single step.
+   - The original encoder's features depend on chain length. 100% of held-out observations never occur in a large sample of training-length rollouts, and every reward ends up *below* never-checking on lengths 10–14, mostly by committing before executing a single step.
    - A length-invariant encoder (2–5% novel) keeps 0.86 at lengths 7–9, within 0.02 [−0.05, 0.01] of a hand-coded checker.
    - Removing only the two position features is not enough (98% still novel; 0.14 at 10–14). The remaining length-normalised features also change meaning with length.
 3. **Every reward shows a "detect but don't repair" failure; paying at the repair step removes it.**
@@ -110,7 +110,7 @@ The per-experiment targets (`make main`, `make ablations`, …) resume into `res
 - **Verified rewrite.** The environment was rewritten for clarity. `make equivalence` compares it with the original implementation (vendored in `scripts/legacy/`) step by step: 86,112 steps, 0 differences in dynamics, masks, rewards or observations.
 - **Independent streams, honest held-out sets.** Training, validation and evaluation episodes come from independent RNG streams, and the tests check which stream `evaluate()` uses. Checkpoint selection may only use the training distribution; the config loader rejects anything else. Training-length evaluation is in-distribution by design; only the held-out lengths are genuinely unseen.
 - **Fair baselines.** Reference policies see only what the agents could observe, plus the action costs. The budget-aware heuristic's margin is tuned on training lengths (`scripts/tune_heuristic.py`). The DQN hyperparameters are the original study's, kept after a small pilot and re-checked under three alternatives.
-- **Numbers come from code.** Every result quoted in the paper comes from `paper/numbers.tex`, which `ultrarl.report` generates; a reference to a missing result is a LaTeX error. CI regenerates the tables and numbers and fails if they differ from the committed ones.
+- **Numbers come from code.** Every experimental result in the paper is a macro from `paper/numbers.tex`, which `ultrarl.report` generates from `results/`; a reference to a missing result is a LaTeX error. (Figures quoted about the earlier version and fixed settings such as hyperparameters are written by hand.) CI regenerates the tables and numbers and fails if they differ from the committed ones.
 
 ## Citation
 

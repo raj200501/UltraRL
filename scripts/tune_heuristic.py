@@ -6,18 +6,22 @@ Uses the learning-curve RNG stream (disjoint from the evaluation stream), so the
 choice cannot leak information from the reported evaluation episodes.
 """
 
-from ultrarl.config import EnvConfig, EvalSetting
+from pathlib import Path
+
+from ultrarl.config import load_experiment
 from ultrarl.policies import build_heuristic
 from ultrarl.rollout import CURVE_STREAM, evaluate
 
+EXPERIMENT = load_experiment(Path(__file__).resolve().parents[1] / "configs" / "main.yaml")
+
 
 def main() -> None:
-    train = EvalSetting("train_like", (3, 6))
+    train = next(s for s in EXPERIMENT.eval_settings if s.name == "train_like")
     scores = {}
     for margin in range(7):
         policy = build_heuristic(f"budget_aware_{margin}", 0)
         act = lambda _obs, observable, mask, p=policy: p(observable, mask)  # noqa: E731
-        scores[margin] = evaluate(act, EnvConfig(), train, run_seed=0, episodes=2000, stream=CURVE_STREAM)["success"]
+        scores[margin] = evaluate(act, EXPERIMENT.env, train, run_seed=0, episodes=2000, stream=CURVE_STREAM)["success"]
         print(f"margin={margin}: train-length success {scores[margin]:.3f}")
     print(f"best margin: {max(scores, key=scores.get)}")
 

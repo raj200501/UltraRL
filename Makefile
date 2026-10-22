@@ -21,8 +21,8 @@ smoke:  ## ~30 s end-to-end run of the whole pipeline in a scratch directory
 report:  ## every figure, table and number in the paper, from the saved results (no training)
 	$(PYTHON) -m ultrarl.report --results results --paper paper
 
-paper: report
-	cd paper && latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
+paper: report  ## SOURCE_DATE_EPOCH pins the PDF's embedded dates to the last commit
+	cd paper && SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 
 # Resume or extend the saved experiments in results/: runs whose checkpoints
 # already exist (and match the config) are skipped, evaluation is recomputed.
