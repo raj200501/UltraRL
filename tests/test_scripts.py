@@ -148,6 +148,6 @@ def test_agent_coverage_finds_training_length_observations_familiar():
     # regression: pandas' Series.isin mishandles these bytes keys and reported almost everything unseen
     coverage = _load("agent_coverage")
     coverage.REFERENCE_EPISODES, coverage.EPISODES = 300, 50
-    rows = {r["setting"]: r for r in coverage.job(("main", "ma_inv", 0))}
+    rows = {r["setting"]: r for r in coverage.job(("main", "ma_inv", 0, "best"))}
     assert rows["train_like"]["unseen_fraction"] < 0.1
     assert rows["heldout_xlong"]["unseen_fraction"] < 0.2

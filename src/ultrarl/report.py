@@ -368,6 +368,11 @@ def curve_stats(
         # Acquisition and retention: when a seed first exceeds 0.5, and how often it collapses afterwards.
         first = everything[everything.train_like_success > 0.5].groupby("seed").episode.min()
         out[f"{prefix}/{method}/first_above_half_median"] = f"{first.median():,.0f}" if len(first) else "--"
+        # how many collapsed late checkpoints come before the seed first exceeds 0.5 (or it never does)
+        collapsed_late = sub[sub.collapsed]
+        before = collapsed_late.episode < collapsed_late.seed.map(first).fillna(np.inf)
+        if len(collapsed_late):
+            out[f"{prefix}/{method}/collapse_before_first_rate"] = float(before.mean())
         after = [
             float((s.train_like_success[s.episode > first[seed]] <= COLLAPSE_THRESHOLD).mean())
             for seed, s in everything.groupby("seed")
@@ -518,14 +523,15 @@ PRIMARY = [
 ]
 
 
-def key_numbers(per_seed: pd.DataFrame, comparisons: list[tuple[str, str, str]] = COMPARISONS) -> pd.DataFrame:
-    """Paired (by seed) differences in success quoted in the text."""
+def key_numbers(
+    per_seed: pd.DataFrame, comparisons: list[tuple[str, str, str]] = COMPARISONS, metric: str = "success"
+) -> pd.DataFrame:
+    """Paired (by seed) differences quoted in the text (in success unless ``metric`` says otherwise)."""
     rows = []
     for a, b, setting in comparisons:
-        d = paired_difference(per_seed, "success", a, b, setting)
-        rows.append(
-            {"a": a, "b": b, "setting": setting, "metric": "success", "primary": (a, b, setting) in PRIMARY, **d}
-        )
+        d = paired_difference(per_seed, metric, a, b, setting)
+        primary = metric == "success" and (a, b, setting) in PRIMARY
+        rows.append({"a": a, "b": b, "setting": setting, "metric": metric, "primary": primary, **d})
     frame = pd.DataFrame(rows)
     frame["p_holm"] = np.nan
     primary = frame.primary
@@ -1060,10 +1066,11 @@ def main(argv: list[str] | None = None) -> None:
                        "lowdet/final_step_share_rate": float(low.final_step_share.min())})  # fmt: skip
     agent_coverage = results / "agent_coverage.csv"
     if agent_coverage.exists():
-        means = pd.read_csv(agent_coverage).groupby(["method", "setting"]).mean(numeric_only=True)
-        for (method, setting), c in means.iterrows():
-            for column, name in AGENT_COVERAGE.items():
-                extras[f"agentcov/{method}/{setting}/{name}"] = c[column]
+        means = pd.read_csv(agent_coverage).groupby(["method", "checkpoint", "setting"]).mean(numeric_only=True)
+        for (method, which, setting), c in means.iterrows():
+            name = method + ("" if which == "best" else FINAL)
+            for column, macro in AGENT_COVERAGE.items():
+                extras[f"agentcov/{name}/{setting}/{macro}"] = c[column]
     followup_dir = results / "followups"
     if (followup_dir / "eval_summary.csv").exists():
         summaries["followups"] = pd.read_csv(followup_dir / "eval_summary.csv")
@@ -1129,6 +1136,10 @@ def main(argv: list[str] | None = None) -> None:
         extras.update(comparison_macros(key_numbers(joint, pairs)))
         largest = {f"{m} {s}": f"diff/{m}-outcome_inv/{s}/success" for m in variants for s in LENGTHS}
         extras.update(extreme_macros(extras, largest, "extremes/process_vs_outcome/success"))
+        wasted = [(f"naive_step10{FINAL}", f"{ref}{FINAL}", s) for ref in ("naive_step015", "naive_step10_once")
+                  for s in ("train_like", "heldout_xlong")]  # fmt: skip
+        wasted += [(f"naive_step10{FINAL}", f"outcome_inv{FINAL}", "train_like")]
+        extras.update(comparison_macros(key_numbers(joint, wasted, metric="nonrepair_revise_count")))
         ma_gap = {f"{m} {s}": f"diff/ma_inv-{m}/{s}/success" for m in variants for s in LENGTHS}
         extras.update(extreme_macros(extras, ma_gap, "extremes/ma_vs_process/success"))
         extras["extremes/ma_vs_process/resolved"] = str(sum(extras[f"{k}/lo"] > 0 for k in ma_gap.values()))

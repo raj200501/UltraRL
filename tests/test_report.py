@@ -72,7 +72,8 @@ def generated(tmp_path_factory):
     ).to_csv(tmp / "results" / "observation_coverage.csv", index=False)
     pd.DataFrame(
         [
-            {"method": "ma_history", "seed": seed, "setting": "heldout_xlong", "unseen_fraction": 0.3,
+            {"method": "ma_history", "checkpoint": "best", "seed": seed, "setting": "heldout_xlong",
+             "unseen_fraction": 0.3,
              "zero_slack_unseen": 0.8, "zero_slack_spend": 0.1, "zero_slack_spend_seen": 0.0,
              "zero_slack_spend_unseen": np.nan if seed else 0.1, "uncued_check_early": 0.5,
              "slack_spent_seen": 4.0, "slack_spent_unseen": 2.0,

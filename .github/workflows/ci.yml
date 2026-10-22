@@ -37,7 +37,7 @@ jobs:
         run: pytest
       - name: Smoke run of the full pipeline
         run: python -m ultrarl.run --config configs/main.yaml --out /tmp/smoke --smoke --workers 2
-      - name: Committed figures, tables and paper numbers match the saved results
+      - name: Committed tables and paper numbers match the saved results
         if: matrix.deps == 'locked'
         run: |
           python -m ultrarl.report --results results --paper paper

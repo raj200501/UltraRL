@@ -4,16 +4,18 @@ the agent spend budget it cannot afford?
     python scripts/agent_coverage.py   # writes results/agent_coverage.csv
 
 ``observation_coverage.py`` measures novelty under the hand-coded policies, which
-isolates the encoder. Here each selected checkpoint is instead rolled out greedily:
+isolates the encoder. Here each selected and each last checkpoint is instead rolled
+out greedily:
 its own training-length rollouts form the reference sample, and on fresh episodes
 of every length we record
 
 * the share of decision points whose observation is outside that sample;
 * at decision points with no slack left and the chain unfinished, where any
   ``VERIFY`` or ``REVISE`` makes finishing impossible, how often the agent spends
-  anyway, separately at familiar and at unseen observations (comparing points
-  with the same slack avoids the confound that unseen observations come late in
-  long episodes, when slack is low);
+  anyway, and how many of these points are unseen. A greedy policy acts at a
+  familiar observation as it did at training lengths, so its spending at such
+  points is fixed by its training-length behaviour; what differs between agents
+  is how often the critical points are unseen, and what they do there;
 * the slack spent per episode at familiar and at unseen observations (a
   ``VERIFY`` uses one unit, a ``REVISE`` two, counting the redone step);
 * the un-cued check rate in the first half of the chain, where most of the slack
@@ -75,13 +77,13 @@ def _rate(values: pd.Series) -> float:
     return float(values.mean()) if len(values) else float("nan")
 
 
-def job(args: tuple[str, str, int]) -> list[dict]:
+def job(args: tuple[str, str, int, str]) -> list[dict]:
     torch.set_num_threads(1)
-    experiment, name, seed = args
+    experiment, name, seed, which = args
     exp = load_experiment(ROOT / "configs" / f"{experiment}.yaml")
     method = next(m for m in exp.methods if m.name == name)
     settings = {s.name: s for s in exp.eval_settings if not s.env_overrides}
-    agent, _ = DQNAgent.load(checkpoint_path(ROOT / "results" / experiment, method, seed, "best"))
+    agent, _ = DQNAgent.load(checkpoint_path(ROOT / "results" / experiment, method, seed, which))
     env = ChainEnv(exp.method_env(method))
     seen = set(rollouts(agent, env, CURVE_STREAM, seed, settings["train_like"], REFERENCE_EPISODES).key)
     rows = []
@@ -93,6 +95,7 @@ def job(args: tuple[str, str, int]) -> list[dict]:
             {
                 "experiment": experiment,
                 "method": name,
+                "checkpoint": which,
                 "seed": seed,
                 "setting": setting,
                 "points": len(points),
@@ -115,7 +118,7 @@ def main() -> None:
     jobs = []
     for experiment, names in METHODS.items():
         exp = load_experiment(ROOT / "configs" / f"{experiment}.yaml")
-        jobs += [(experiment, name, seed) for name in names for seed in exp.seeds]
+        jobs += [(experiment, name, seed, which) for name in names for seed in exp.seeds for which in ("best", "final")]
     with mp.get_context("spawn").Pool(max(1, (mp.cpu_count() or 2) - 1)) as pool:
         rows = [row for chunk in pool.imap(job, jobs) for row in chunk]
     out = ROOT / "results" / "agent_coverage.csv"
