@@ -1,42 +1,201 @@
-@misc{openai_reasoning_2024,
-  title        = {Learning to reason with {{LLMs}}},
-  author       = {{OpenAI}},
-  year         = {2024},
-  month        = sep,
-  howpublished = {\url{https://openai.com/index/learning-to-reason-with-llms/}},
-  note         = {Accessed April 10, 2026}
+% ---------------------------------------------------------------- process supervision
+@article{uesato2022process,
+  title   = {Solving math word problems with process- and outcome-based feedback},
+  author  = {Uesato, Jonathan and Kushman, Nate and Kumar, Ramana and Song, Francis and Siegel, Noah and Wang, Lisa and Creswell, Antonia and Irving, Geoffrey and Higgins, Irina},
+  journal = {arXiv preprint arXiv:2211.14275},
+  year    = {2022}
 }
 
-@misc{openai_monitorability_2025,
+@inproceedings{lightman2024verify,
+  title     = {Let's Verify Step by Step},
+  author    = {Lightman, Hunter and Kosaraju, Vineet and Burda, Yura and Edwards, Harri and Baker, Bowen and Lee, Teddy and Leike, Jan and Schulman, John and Sutskever, Ilya and Cobbe, Karl},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2024}
+}
+
+@misc{openai2024reasoning,
+  title        = {Learning to reason with {LLMs}},
+  author       = {{OpenAI}},
+  year         = {2024},
+  howpublished = {\url{https://openai.com/index/learning-to-reason-with-llms/}}
+}
+
+@article{deepseek2025r1,
+  title   = {{DeepSeek-R1}: Incentivizing Reasoning Capability in {LLMs} via Reinforcement Learning},
+  author  = {{DeepSeek-AI}},
+  journal = {arXiv preprint arXiv:2501.12948},
+  year    = {2025}
+}
+
+@article{xie2025logicrl,
+  title   = {Logic-{RL}: Unleashing {LLM} Reasoning with Rule-Based Reinforcement Learning},
+  author  = {Xie, Tian and Gao, Zitian and Ren, Qingnan and Luo, Haoming and Hong, Yuqian and Dai, Bryan and Zhou, Joey and Qiu, Kai and Wu, Zhirong and Luo, Chong},
+  journal = {arXiv preprint arXiv:2502.14768},
+  year    = {2025}
+}
+
+@article{snell2024scaling,
+  title   = {Scaling {LLM} Test-Time Compute Optimally can be More Effective than Scaling Model Parameters},
+  author  = {Snell, Charlie and Lee, Jaehoon and Xu, Kelvin and Kumar, Aviral},
+  journal = {arXiv preprint arXiv:2408.03314},
+  year    = {2024}
+}
+
+% ---------------------------------------------------------------- monitorability / faithfulness
+@article{baker2025monitoring,
+  title   = {Monitoring Reasoning Models for Misbehavior and the Risks of Promoting Obfuscation},
+  author  = {Baker, Bowen and Huizinga, Joost and Gao, Leo and Dou, Zehao and Guan, Melody Y. and Madry, Aleksander and Zaremba, Wojciech and Pachocki, Jakub and Farhi, David},
+  journal = {arXiv preprint arXiv:2503.11926},
+  year    = {2025}
+}
+
+@article{korbak2025cot,
+  title   = {Chain of Thought Monitorability: A New and Fragile Opportunity for {AI} Safety},
+  author  = {Korbak, Tomek and Balesni, Mikita and others},
+  journal = {arXiv preprint arXiv:2507.11473},
+  year    = {2025}
+}
+
+@misc{openai2025monitorability,
   title        = {Evaluating chain-of-thought monitorability},
   author       = {{OpenAI}},
   year         = {2025},
-  month        = dec,
-  howpublished = {\url{https://openai.com/index/evaluating-chain-of-thought-monitorability/}},
-  note         = {Accessed April 10, 2026}
+  howpublished = {\url{https://openai.com/index/evaluating-chain-of-thought-monitorability/}}
 }
 
-@misc{anthropic_faithfulness_2025,
-  title        = {Reasoning models don't always say what they think},
-  author       = {{Anthropic}},
-  year         = {2025},
-  month        = apr,
-  howpublished = {\url{https://www.anthropic.com/research/reasoning-models-dont-say-think}},
-  note         = {Accessed April 10, 2026}
+@inproceedings{turpin2023unfaithful,
+  title     = {Language Models Don't Always Say What They Think: Unfaithful Explanations in Chain-of-Thought Prompting},
+  author    = {Turpin, Miles and Michael, Julian and Perez, Ethan and Bowman, Samuel R.},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2023}
 }
 
-@article{deepseek_r1_2025,
-  title   = {{DeepSeek-R1}: Incentivizing Reasoning Capability in {{LLMs}} via Reinforcement Learning},
-  author  = {{DeepSeek-AI} and Guo, Daya and Yang, Dejian and Zhang, Haowei and Song, Junxiao and Wang, Peiyi and Zhu, Qihao and Xu, Runxin and Zhang, Ruoyu and Ma, Shirong and others},
-  journal = {arXiv preprint arXiv:2501.12948},
-  year    = {2025},
-  url     = {https://arxiv.org/abs/2501.12948}
+@article{lanham2023faithfulness,
+  title   = {Measuring Faithfulness in Chain-of-Thought Reasoning},
+  author  = {Lanham, Tamera and Chen, Anna and Radhakrishnan, Ansh and Steiner, Benoit and Denison, Carson and Hernandez, Danny and Li, Dustin and Durmus, Esin and Hubinger, Evan and Kernion, Jackson and others},
+  journal = {arXiv preprint arXiv:2307.13702},
+  year    = {2023}
 }
 
-@article{logic_rl_2025,
-  title   = {Logic-{{RL}}: Unleashing {{LLM}} Reasoning with Rule-Based Reinforcement Learning},
-  author  = {Xie, Tian and Gao, Zitian and Ren, Qingnan and Luo, Haoming and Hong, Yuqian and Dai, Bryan and Zhou, Joey and Qiu, Kai and Wu, Zhirong and Luo, Chong},
-  journal = {arXiv preprint arXiv:2502.14768},
-  year    = {2025},
-  url     = {https://arxiv.org/abs/2502.14768}
+@article{chen2025reasoning,
+  title   = {Reasoning Models Don't Always Say What They Think},
+  author  = {Chen, Yanda and Benton, Joe and Radhakrishnan, Ansh and Uesato, Jonathan and Denison, Carson and Schulman, John and Somani, Arushi and Hase, Peter and Wagner, Misha and Roger, Fabien and Mikulik, Vlad and Bowman, Samuel R. and Leike, Jan and Kaplan, Jared and Perez, Ethan},
+  journal = {arXiv preprint arXiv:2505.05410},
+  year    = {2025}
+}
+
+% ---------------------------------------------------------------- RL methods and evaluation
+@article{mnih2015human,
+  title   = {Human-level control through deep reinforcement learning},
+  author  = {Mnih, Volodymyr and Kavukcuoglu, Koray and Silver, David and Rusu, Andrei A. and Veness, Joel and Bellemare, Marc G. and Graves, Alex and Riedmiller, Martin and Fidjeland, Andreas K. and Ostrovski, Georg and others},
+  journal = {Nature},
+  volume  = {518},
+  number  = {7540},
+  pages   = {529--533},
+  year    = {2015}
+}
+
+@inproceedings{vanhasselt2016double,
+  title     = {Deep Reinforcement Learning with Double {Q}-Learning},
+  author    = {van Hasselt, Hado and Guez, Arthur and Silver, David},
+  booktitle = {AAAI Conference on Artificial Intelligence},
+  year      = {2016}
+}
+
+@inproceedings{lillicrap2016continuous,
+  title     = {Continuous control with deep reinforcement learning},
+  author    = {Lillicrap, Timothy P. and Hunt, Jonathan J. and Pritzel, Alexander and Heess, Nicolas and Erez, Tom and Tassa, Yuval and Silver, David and Wierstra, Daan},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2016}
+}
+
+@inproceedings{ng1999shaping,
+  title     = {Policy Invariance Under Reward Transformations: Theory and Application to Reward Shaping},
+  author    = {Ng, Andrew Y. and Harada, Daishi and Russell, Stuart},
+  booktitle = {International Conference on Machine Learning},
+  year      = {1999}
+}
+
+@inproceedings{schaul2022churn,
+  title     = {The Phenomenon of Policy Churn},
+  author    = {Schaul, Tom and Barreto, Andr{\'e} and Quan, John and Ostrovski, Georg},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2022}
+}
+
+@inproceedings{henderson2018matters,
+  title     = {Deep Reinforcement Learning That Matters},
+  author    = {Henderson, Peter and Islam, Riashat and Bachman, Philip and Pineau, Joelle and Precup, Doina and Meger, David},
+  booktitle = {AAAI Conference on Artificial Intelligence},
+  year      = {2018}
+}
+
+@inproceedings{agarwal2021precipice,
+  title     = {Deep Reinforcement Learning at the Edge of the Statistical Precipice},
+  author    = {Agarwal, Rishabh and Schwarzer, Max and Castro, Pablo Samuel and Courville, Aaron and Bellemare, Marc G.},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2021}
+}
+
+@book{efron1993bootstrap,
+  title     = {An Introduction to the Bootstrap},
+  author    = {Efron, Bradley and Tibshirani, Robert J.},
+  publisher = {Chapman \& Hall},
+  year      = {1993}
+}
+
+% ---------------------------------------------------------------- generalization
+@inproceedings{cobbe2019quantifying,
+  title     = {Quantifying Generalization in Reinforcement Learning},
+  author    = {Cobbe, Karl and Klimov, Oleg and Hesse, Chris and Kim, Taehoon and Schulman, John},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2019}
+}
+
+@article{kirk2023survey,
+  title   = {A Survey of Zero-shot Generalisation in Deep Reinforcement Learning},
+  author  = {Kirk, Robert and Zhang, Amy and Grefenstette, Edward and Rockt{\"a}schel, Tim},
+  journal = {Journal of Artificial Intelligence Research},
+  volume  = {76},
+  pages   = {201--264},
+  year    = {2023}
+}
+
+@inproceedings{anil2022length,
+  title     = {Exploring Length Generalization in Large Language Models},
+  author    = {Anil, Cem and Wu, Yuhuai and Andreassen, Anders and Lewkowycz, Aitor and Misra, Vedant and Ramasesh, Vinay and Slone, Ambrose and Gur-Ari, Guy and Dyer, Ethan and Neyshabur, Behnam},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2022}
+}
+
+@inproceedings{deletang2023chomsky,
+  title     = {Neural Networks and the {C}homsky Hierarchy},
+  author    = {Del{\'e}tang, Gr{\'e}goire and Ruoss, Anian and Grau-Moya, Jordi and Genewein, Tim and Wenliang, Li Kevin and Catt, Elliot and Cundy, Chris and Hutter, Marcus and Legg, Shane and Veness, Joel and Ortega, Pedro A.},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2023}
+}
+
+% ---------------------------------------------------------------- metareasoning
+@article{russell1991principles,
+  title   = {Principles of Metareasoning},
+  author  = {Russell, Stuart and Wefald, Eric},
+  journal = {Artificial Intelligence},
+  volume  = {49},
+  number  = {1--3},
+  pages   = {361--395},
+  year    = {1991}
+}
+
+@inproceedings{hay2012selecting,
+  title     = {Selecting Computations: Theory and Applications},
+  author    = {Hay, Nicholas and Russell, Stuart and Tolpin, David and Shimony, Solomon Eyal},
+  booktitle = {Conference on Uncertainty in Artificial Intelligence},
+  year      = {2012}
+}
+
+@article{graves2016adaptive,
+  title   = {Adaptive Computation Time for Recurrent Neural Networks},
+  author  = {Graves, Alex},
+  journal = {arXiv preprint arXiv:1603.08983},
+  year    = {2016}
 }

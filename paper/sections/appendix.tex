@@ -1,0 +1,73 @@
+\section{Environment Details}
+\label{app:env}
+
+\paragraph{Transitions.}
+Given the current true value $v$, a transition is drawn uniformly from the available operations: \texttt{add}~$k$ with $k \in \{1,\dots,4\}$; \texttt{sub}~$k$ with $k \in \{1,\dots,\min(4, v-1)\}$ if $v > 2$; and \texttt{mul}~$k$ with $k \in \{2,3\}$ if $|v| \le 16$. The corrupted version of \texttt{add}/\texttt{sub}~$k$ uses $k{+}1$, and that of \texttt{mul}~$k$ is \texttt{add}~$k$. If the corrupted operation happens to give the same value, it is replaced by \texttt{add}~$k{+}2$. A corrupted step therefore always changes the value (unit-tested).
+
+\paragraph{Fault prior.}
+Conditional on a fault, its position $h \in \{0,\dots,d-1\}$ has weight $1 + 5\,(1 - |h - c| / \max(1, c))$ with $c = (d-1)/2$, i.e.\ it peaks in the middle of the chain.
+
+\paragraph{Cue selectivity metric.}
+At every decision point where the current step $t > 0$ has not been checked and \texttt{VERIFY} is available, we record the cue $c_t$ and whether the agent chose \texttt{VERIFY}. $P(\texttt{VERIFY} \mid c)$ pools these counts over all evaluation episodes of a seed.
+
+\paragraph{Validation against the original implementation.}
+The environment was rewritten for this version. Over 86{,}112 random steps from 18{,}000 episodes, covering all reward schemes and both budget-penalty settings, the rewritten environment reproduces the original implementation's transitions, masks, rewards and absolute observations exactly. The only difference is the observation returned after the terminal \texttt{COMMIT}, which no learner uses.
+
+\section{Hyperparameters and Compute}
+\label{app:hparams}
+
+\begin{table}[h]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Default environment and learner settings.}
+\label{tab:hparams}
+\begin{tabular}{ll}
+\toprule
+Setting & Value \\
+\midrule
+Training / held-out lengths & 3--6 / 7--9 and 10--14 \\
+Fault probability; cue hit / false-positive rate & 0.8; 0.85 / 0.15 \\
+Budget; action costs (\texttt{THINK}, \texttt{VERIFY}, \texttt{REVISE}) & $d + 6$; $(1,1,1)$ \\
+Rewards: success / failure / per-unit cost & $+1$ / $-1.2$ / $-0.04$ \\
+Monitorability-aware coefficients (Eq.~\ref{eq:ma}) & $0.02, 0.25, 0.18, 0.02, 0.06, 0.30$ \\
+Network & MLP, 2 hidden layers of 64 ReLU units \\
+Optimiser; learning rate; gradient clip & Adam; $10^{-3}$; 1.0 (global norm) \\
+Discount; loss & 0.99; Huber \\
+Replay size; batch size; warm-up & 25{,}000; 64; 500 steps \\
+Target network & hard copy every 200 environment steps \\
+Exploration & $\epsilon$: 0.5 $\to$ 0.02 linearly over 85\% of training \\
+Training episodes per run & 20{,}000 \\
+Seeds & 10 (main, ablations), 5 (sensitivity) \\
+Validation for selection & 200 episodes of lengths 3--6 every 1{,}000 episodes \\
+Evaluation & 500 episodes per seed and setting \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A training run takes about four minutes on one CPU core. The main experiment (60 runs), the ablations (80 additional runs), the sensitivity study (30 runs) and the follow-up encoder (20 runs) together take about four hours on a 4-core machine. No GPU is used.
+
+\section{Last-Checkpoint Results}
+\label{app:final}
+
+\begin{table}[h]
+\centering
+\small
+\setlength{\tabcolsep}{3.5pt}
+\caption{As Table~\ref{tab:main}, but evaluating the last checkpoint of each run instead of the one selected on training-length validation. Heuristics are repeated for reference.}
+\label{tab:final}
+\resizebox{\linewidth}{!}{\input{tables/main_results_final.tex}}
+\end{table}
+
+\section{Changes from the Earlier Version}
+\label{app:changes}
+
+The first public version of this repository reported that monitorability-aware RL reached 0.60 success on training lengths but only 0.11 on lengths 7--9, and concluded that the learned checking behaviour was brittle under length shift. This version changes the following.
+\begin{enumerate}
+  \item \textbf{Representation control.} The original observation contained absolute position and depth features. We add a length-invariant encoder and compare the two directly (\S\ref{sec:length}). The encoder, not the reward, explains most of the length-generalization failure.
+  \item \textbf{Training length and checkpoint selection.} Runs were trained for 5{,}000 episodes, while learning curves were still rising, and evaluated at the last checkpoint. We train for 20{,}000 episodes, select checkpoints on training-length validation only, and report last-checkpoint results as well (Appendix~\ref{app:final}).
+  \item \textbf{Evaluation leakage.} Training episode seeds were \texttt{seed}$\cdot 10^5 + i$ and evaluation seeds \texttt{seed}$\cdot 10^6 + i$, which coincide for seed~0: 299 of seed~0's 300 training-length evaluation episodes were exact copies of training episodes. Training, validation and evaluation now use disjoint random-number streams, and a regression test checks that they stay disjoint.
+  \item \textbf{Localization metric.} The original ``failed-episode localization score'' gave full credit when the fault was on the last step and the agent committed without checking anything; as a result the never-check policy scored 0.07. We replace it with fault detection, the probability that a check caught the fault.
+  \item \textbf{Stronger baselines and statistics.} We add a budget-aware heuristic tuned on training lengths, use 10 seeds instead of 5, and report bootstrap confidence intervals and paired differences instead of standard errors.
+  \item \textbf{Heuristic definitions.} The original cue-triggered heuristic re-checked a step after repairing it; ours does not, which raises its success from 0.83 to 0.88. Learned agents are unaffected.
+\end{enumerate}

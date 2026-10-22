@@ -1,0 +1,79 @@
+# Which parts of the monitorability-aware reward matter? All variants use the
+# length-invariant observation and the main experiment's training setup.
+name: ablations
+
+env:
+  train_depth_range: [3, 6]
+  max_depth: 9
+  p_fault: 0.8
+  fault_profile: middle
+  fault_peak_weight: 5.0
+  cue_hit_rate: 0.85
+  cue_false_positive_rate: 0.15
+  budget_extra: 6
+  observation: invariant
+  reward_scheme: monitorability_aware
+
+train:
+  episodes: 20000
+  learning_rate: 0.001
+  hidden_size: 64
+  batch_size: 64
+  replay_size: 25000
+  warmup_steps: 500
+  target_update_interval: 200
+  epsilon_start: 0.5
+  epsilon_end: 0.02
+  epsilon_decay_fraction: 0.85
+  curve_interval: 1000
+  curve_episodes: 200
+
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+methods:
+  - {name: ma_inv, display_name: Full reward}
+  - name: no_cue_terms
+    display_name: "$-$ cue bonus/penalty"
+    env_overrides: {ma_cue_verify_bonus: 0.0, ma_low_cue_penalty: 0.0}
+  - name: no_gap_term
+    display_name: "$-$ unchecked-gap term"
+    env_overrides: {ma_gap_penalty: 0.0}
+  - name: no_waste_penalty
+    display_name: "$-$ wasted-check penalty"
+    env_overrides: {ma_waste_verify_penalty: 0.0}
+  - name: no_check_bonuses
+    display_name: "$-$ safe/fault check bonuses"
+    env_overrides: {ma_safe_verify_bonus: 0.0, ma_fault_verify_bonus: 0.0}
+  - name: no_monitor_terms
+    display_name: "$-$ cue, gap and waste terms"
+    env_overrides: {ma_cue_verify_bonus: 0.0, ma_low_cue_penalty: 0.0, ma_waste_verify_penalty: 0.0, ma_gap_penalty: 0.0}
+  - name: cue_bonus_only
+    display_name: cue bonus only
+    env_overrides:
+      {ma_safe_verify_bonus: 0.0, ma_fault_verify_bonus: 0.0, ma_low_cue_penalty: 0.0, ma_waste_verify_penalty: 0.0, ma_gap_penalty: 0.0}
+  - name: no_budget_penalty
+    display_name: "$-$ per-action cost"
+    env_overrides: {budget_penalty: false}
+  - name: no_revise
+    display_name: "REVISE disabled"
+    env_overrides: {allow_revise: false}
+
+evaluation:
+  episodes: 500
+  curve_settings:
+    - {name: train_like, depth_range: [3, 6]}
+    - {name: heldout_long, depth_range: [7, 9]}
+  settings:
+    - {name: train_like, depth_range: [3, 6]}
+    - {name: heldout_long, depth_range: [7, 9]}
+    - {name: heldout_xlong, depth_range: [10, 14]}
+
+smoke:
+  train: {episodes: 300, curve_interval: 150, curve_episodes: 20, warmup_steps: 100}
+  seeds: [0]
+  evaluation:
+    episodes: 30
+    curve_settings:
+      - {name: train_like, depth_range: [3, 6]}
+    settings:
+      - {name: train_like, depth_range: [3, 6]}

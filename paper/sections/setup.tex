@@ -1,0 +1,80 @@
+\section{A Testbed for Learning When to Verify}
+\label{sec:setup}
+
+\paragraph{Task.}
+Each episode is an arithmetic chain $s_0 \to s_1 \to \dots \to s_d$ of depth $d$: the start value $s_0 \in \{2,\dots,6\}$ is followed by $d$ randomly sampled transitions (add, subtract, or multiply by a small constant). With probability $p_f = 0.8$, exactly one transition $h$ is \emph{faulty}: until the fault has been located, executing it applies a corrupted operation, so the agent's running value silently diverges from the true value. Conditional on a fault, $h$ is drawn from a prior that peaks in the middle of the chain. Each transition carries a one-bit \emph{cue} $c_t$ that fires with probability $0.85$ on the faulty transition and with probability $0.15$ on every other transition. The cue plays the role of a cheap, noisy signal that a reasoning step looks suspicious.
+
+\paragraph{Actions and budget.}
+The agent chooses among four actions. \texttt{THINK} executes the next transition. \texttt{VERIFY} exactly checks the most recently executed transition and returns \textsc{safe} or \textsc{unsafe}; the check is \emph{local}, so it does not detect corruption inherited from an earlier unchecked fault. The first \textsc{unsafe} result locates the fault, after which re-executing it (\texttt{REVISE}, which undoes the last step, followed by \texttt{THINK}) applies the correct operation. \texttt{COMMIT} ends the episode, which succeeds if and only if all $d$ transitions have been executed and the final value is correct. \texttt{THINK}, \texttt{VERIFY} and \texttt{REVISE} each cost one unit of a budget of $d + 6$ units. The agent can therefore afford six actions beyond the chain itself: enough to check some steps and repair one fault, but not to check every step of a long chain.
+
+The environment is deliberately small. All quantities of interest are exact: whether a fault was present, whether and where it was caught, and which steps were checked. The question is not whether the task is hard, but whether reinforcement learning (RL) finds and keeps the right \emph{allocation} of checking effort, and whether that allocation transfers to longer chains.
+
+\paragraph{Observations.}
+The agent never observes the running value, the true value or the fault location. We compare two encodings of the same local information (Table~\ref{tab:obs}):
+\begin{itemize}
+  \item \textbf{absolute} (10-d): normalised position $t/9$, depth $d/9$, budget fraction, normalised budget slack, normalised unchecked gap, cue, a revised-last-step flag and a one-hot of the last verification result. This is the encoding used in the original version of this study.
+  \item \textbf{invariant} (9-d): flags for $t=0$ and $t=d$, budget slack $\mathrm{clip}(b_t-(d-t), -10, 10)/10$, unchecked gap $\min(g_t, 3)/3$, cue, the revised flag and the verification one-hot.
+\end{itemize}
+Here $b_t$ is the remaining budget and $g_t$ the number of steps since the last checked step. Budget slack $b_t - (d - t)$ is the number of non-\texttt{THINK} actions still affordable. On held-out lengths the absolute encoding produces feature values never seen in training (for example $d/9 > 6/9$). The invariant encoding produces none, as long as the slack stays in range. Neither encoding gives the agent memory of earlier \textsc{unsafe} results.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Observation features. Both encoders expose the same local information that a hand-coded checking policy needs; they differ only in how position and length are represented.}
+\label{tab:obs}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lll}
+\toprule
+Information & Absolute encoder & Invariant encoder \\
+\midrule
+Position & $t / 9$, depth $d/9$ & $[t{=}0]$, $[t{=}d]$ \\
+Budget & $b_t / B$, $\mathrm{clip}(0.5 + \mathrm{slack}/2B, 0, 1)$ & $\mathrm{clip}(\mathrm{slack}, \pm 10) / 10$ \\
+Unchecked gap & $g_t / 9$ & $\min(g_t, 3)/3$ \\
+Cue, revised flag, last check & shared & shared \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\section{Rewards, Learner and Reference Policies}
+\label{sec:method}
+
+\paragraph{Base reward.}
+All agents receive $+1$ for a successful commit, $-1.2$ for a failed one, and $-0.04$ per unit of budget spent.
+
+\paragraph{Process rewards.}
+We compare three reward schemes, keeping the coefficients of the original study:
+\begin{itemize}
+  \item \textbf{Outcome-only}: the base reward alone.
+  \item \textbf{Naive process}: $+0.015$ for each \texttt{THINK} that leaves the running value correct, and $+0.02$ for each first-time informative check. These are the kind of dense ``step is correct'' signals a process reward model provides~\citep{uesato2022process,lightman2024verify}.
+  \item \textbf{Monitorability-aware}: rewards checks that make the trajectory more diagnosable:
+\begin{equation}
+\begin{aligned}
+r^{\mathrm{MA}}_t = {}& 0.02\,\mathbb{1}[\text{safe check}] + 0.25\,\mathbb{1}[\text{fault caught}] + 0.18\,\mathbb{1}[\text{informative check},\,c_t{=}1] \\
+& - 0.02\,\mathbb{1}[\text{safe check},\,c_t{=}0] - 0.06\,\mathbb{1}[\text{wasted check}] - 0.3\,\frac{g_{t+1}-g_t}{d}.
+\end{aligned}
+\label{eq:ma}
+\end{equation}
+A check is \emph{informative} if it is the first check of that step and either confirms a correct value or catches the fault. It is \emph{wasted} if it repeats a check, or checks a step downstream of an undetected fault.
+\end{itemize}
+The gap term telescopes to $-0.3\,g_T/d$ over an episode. It is therefore close to potential-based shaping~\citep{ng1999shaping}, plus a terminal penalty for committing with unchecked steps. The other terms are not potential-based and can change the optimal policy. Both process rewards use privileged information (the hidden correctness of the running value), as a learned process reward model would approximate.
+
+\paragraph{Learner.}
+Every learned agent is a masked Double DQN~\citep{mnih2015human,vanhasselt2016double} with a 2$\times$64 ReLU MLP ($\sim$5k parameters), Huber loss, Adam (learning rate $10^{-3}$), a 25k-transition uniform replay buffer, batch size 64, a hard target update every 200 environment steps, and $\epsilon$-greedy exploration annealed linearly from 0.5 to 0.02 over the first 85\% of training. Unavailable actions are masked both when acting and in the bootstrap target. Each run trains for 20{,}000 episodes on chains of length 3--6. These are the original study's hyperparameters, with $4{\times}$ more training. They were the best of the six settings in our pilot sweep (\S\ref{sec:sensitivity}), so the comparison is not tuned in favour of any condition.
+
+\paragraph{Reference policies.}
+We also evaluate four hand-coded policies that see only observable quantities. \emph{Always THINK} never checks. \emph{Verify every step} checks each new step. \emph{Cue-triggered} checks a new step if and only if its cue fired. \emph{Budget-aware} checks cued steps whenever a repair stays affordable, and also checks un-cued steps while the budget slack exceeds that requirement by a margin $m$. We pick $m{=}1$, the value that maximises success on training lengths (\texttt{scripts/tune\_heuristic.py}). All four policies repair immediately after an \textsc{unsafe} check.
+
+\section{Evaluation Protocol}
+\label{sec:protocol}
+
+\paragraph{Seeds and episodes.}
+Every learned condition is trained with 10 independent seeds. Each policy is evaluated on 500 fresh episodes per seed and setting. Training, learning-curve validation and final evaluation draw episodes from disjoint random-number streams. In the original version of this study, seed~0's evaluation episodes coincided with training episodes; that bug is fixed here. Methods are evaluated on identical episodes for a given seed, so comparisons are paired.
+
+\paragraph{Settings.}
+We report success on training lengths (3--6), on held-out lengths 7--9, and on lengths 10--14. On 7--9 we additionally shift the fault rate ($p_f \in \{0.6, 0.9\}$), the verification cost ($c_V \in \{2,3\}$), the budget slack (4 or 8) and the cue quality (clean: $0.95/0.05$; noisy: $0.60/0.35$), without retraining.
+
+\paragraph{Checkpoint selection.}
+DQN policies on this task change abruptly during training (\S\ref{sec:stability}), so the last checkpoint is a noisy sample of what a run has learned. We greedily evaluate every agent on 200 validation episodes of \emph{training-length} chains every 1{,}000 episodes, and keep the checkpoint with the highest validation success. Held-out lengths are never used for selection; the config loader rejects any selection setting outside the training range. Appendix~\ref{app:final} reports every number again for the final checkpoint; the conclusions do not change.
+
+\paragraph{Metrics and statistics.}
+Beyond success we report \emph{fault detection}, $P(\text{an \textsc{unsafe} check occurs} \mid \text{fault})$, and \emph{cue selectivity}, $P(\texttt{VERIFY} \mid \text{unchecked step}, c)$ for $c \in \{0,1\}$. Selectivity is pooled over all decision points at which the current step is unchecked and \texttt{VERIFY} is available. Intervals are 95\% percentile-bootstrap confidence intervals of the mean over seeds~\citep{efron1993bootstrap,agarwal2021precipice}. Differences between methods are bootstrapped over per-seed paired differences.

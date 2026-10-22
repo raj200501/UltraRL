@@ -1,0 +1,96 @@
+\section{Results}
+\label{sec:results}
+
+Table~\ref{tab:main} summarises the main experiment and Figure~\ref{fig:length} shows the headline result. Unless stated otherwise, numbers are means over 10 seeds with 95\% bootstrap confidence intervals, evaluated with the checkpoint selected on training-length validation.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.92\linewidth]{figures/length_generalization.pdf}
+\caption{Success on training lengths (3--6) and on longer held-out chains. Colour encodes the reward and line style the observation encoder (solid: invariant, dashed: absolute); error bars are 95\% bootstrap CIs over 10 seeds. With absolute position features every reward scheme drops below a policy that never checks. With invariant features the monitorability-aware agent matches the cue-triggered heuristic at lengths 7--9.}
+\label{fig:length}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3.5pt}
+\caption{Main results (mean over 10 seeds, 95\% bootstrap CI). ``Detect'' is the fraction of faulty episodes in which the fault was caught by a check; ``cost-adj.'' is success minus $0.05\times$ budget spent. Top block: hand-coded references; bottom block: learned agents (checkpoint selected on training lengths only).}
+\label{tab:main}
+\resizebox{\linewidth}{!}{\input{tables/main_results.tex}}
+\end{table}
+
+\subsection{Process rewards make checking learnable and keep it learned}
+\label{sec:learnability}
+
+Never checking succeeds exactly when no fault is present, which happens 20\% of the time; any gain above that requires the agent to discover a three-step pattern (check a suspicious step, see \textsc{unsafe}, undo and redo). With absolute observations, outcome-only agents essentially never acquire this pattern: their best checkpoints reach \ci{main/outcome_abs/train_like/success} on training lengths, and \val{main/outcome_abs/discovered_seeds}/10 seeds ever exceed 0.5. The monitorability-aware reward raises this to \ci{main/ma_abs/train_like/success} (paired difference $+$\val{diff/ma_abs-outcome_abs/train_like/success} [\val{diff/ma_abs-outcome_abs/train_like/success/lo}, \val{diff/ma_abs-outcome_abs/train_like/success/hi}]).
+
+With invariant observations the picture is more nuanced. Outcome-only agents \emph{do} discover checking (\val{main/outcome_inv/discovered_seeds}/10 seeds exceed 0.5 at some checkpoint), but they rarely keep it: after the first 5{,}000 episodes, \val{main/outcome_inv/collapse_rate/pct} of their greedy checkpoints have fallen back to near-never-check performance (success $\le 0.35$), compared with \val{main/ma_inv/collapse_rate/pct} for the monitorability-aware reward (Figure~\ref{fig:curves}). Even with checkpoint selection, monitorability-aware agents outperform outcome-only agents by $+$\val{diff/ma_inv-outcome_inv/train_like/success} [\val{diff/ma_inv-outcome_inv/train_like/success/lo}, \val{diff/ma_inv-outcome_inv/train_like/success/hi}] and naive process agents by $+$\val{diff/ma_inv-naive_inv/train_like/success} [\val{diff/ma_inv-naive_inv/train_like/success/lo}, \val{diff/ma_inv-naive_inv/train_like/success/hi}] on training lengths. Their \ci{main/ma_inv/train_like/success} slightly exceeds the cue-triggered heuristic (\val{main/cue_triggered/train_like/success}) but stays below the tuned budget-aware heuristic (\val{main/budget_aware_1/train_like/success}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/learning_curves.pdf}
+\caption{Greedy success during training (mean over 10 seeds, shaded 95\% bootstrap CI), evaluated every 1{,}000 episodes on validation episodes. The mean hides large per-seed swings (Figure~\ref{fig:churn}).}
+\label{fig:curves}
+\end{figure}
+
+\subsection{Length generalization is mainly a representation problem}
+\label{sec:length}
+
+Figure~\ref{fig:length} separates the effect of the reward from the effect of the observation encoding. With absolute features, success falls sharply as chains get longer for every reward. On lengths 10--14 all three absolute-feature agents are \emph{worse than never checking} (\val{main/outcome_abs/heldout_xlong/success}, \val{main/naive_abs/heldout_xlong/success} and \val{main/ma_abs/heldout_xlong/success}, versus \val{main/always_think/heldout_xlong/success}). The cause is mechanical: position features outside the training range push the policy into actions it never took at those positions during training. On lengths 10--14, \val{main/ma_abs/heldout_xlong/voluntary_incomplete_commit/pct} of monitorability-aware episodes with absolute features end with a \texttt{COMMIT} before the chain is finished, although the budget still allows continuing.
+
+Changing only the observation encoder removes most of this failure. The monitorability-aware agent with invariant features keeps \ci{main/ma_inv/heldout_long/success} at lengths 7--9 and \ci{main/ma_inv/heldout_xlong/success} at 10--14. These are paired improvements over the absolute encoder of $+$\val{diff/ma_inv-ma_abs/heldout_long/success} [\val{diff/ma_inv-ma_abs/heldout_long/success/lo}, \val{diff/ma_inv-ma_abs/heldout_long/success/hi}] and $+$\val{diff/ma_inv-ma_abs/heldout_xlong/success} [\val{diff/ma_inv-ma_abs/heldout_xlong/success/lo}, \val{diff/ma_inv-ma_abs/heldout_xlong/success/hi}]. At lengths 7--9 the agent is statistically indistinguishable from the cue-triggered heuristic (difference \val{diff/ma_inv-cue_triggered/heldout_long/success} [\val{diff/ma_inv-cue_triggered/heldout_long/success/lo}, \val{diff/ma_inv-cue_triggered/heldout_long/success/hi}]). The reward still matters under the invariant encoder: the ordering monitorability-aware $>$ naive process $>$ outcome-only holds at every length.
+
+\subsection{What the agents learn: cue-selective checking}
+\label{sec:selectivity}
+
+Figure~\ref{fig:selectivity} shows how often each agent checks an unchecked step, split by whether its cue fired. The monitorability-aware agents are sharply selective: with invariant features they check \val{main/ma_inv/train_like/verify_rate_cue1} of cued steps but only \val{main/ma_inv/train_like/verify_rate_cue0} of un-cued ones on training lengths. Outcome-only agents with absolute features barely condition on the cue at all (\val{main/outcome_abs/train_like/verify_rate_cue1} versus \val{main/outcome_abs/train_like/verify_rate_cue0}). With absolute features, selectivity of the monitorability-aware agent also decays on longer chains (\val{main/ma_abs/heldout_long/verify_rate_cue1} versus \val{main/ma_abs/heldout_long/verify_rate_cue0} at 7--9). With invariant features it is largely preserved (\val{main/ma_inv/heldout_long/verify_rate_cue1} versus \val{main/ma_inv/heldout_long/verify_rate_cue0}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/cue_selectivity.pdf}
+\caption{Cue selectivity: probability of checking an unchecked step when its cue is off (open) or on (filled). The cue-triggered heuristic is perfectly selective by construction.}
+\label{fig:selectivity}
+\end{figure}
+
+\subsection{The residual gap: spending slack that long chains need}
+\label{sec:residual}
+
+The invariant agents still lose ground on the longest chains (\val{main/ma_inv/train_like/success} $\to$ \val{main/ma_inv/heldout_long/success} $\to$ \val{main/ma_inv/heldout_xlong/success}), while the cue-triggered heuristic does not (\val{main/cue_triggered/train_like/success} $\to$ \val{main/cue_triggered/heldout_long/success} $\to$ \val{main/cue_triggered/heldout_xlong/success}). The budget-aware heuristic, tuned on training lengths, degrades in the same way (\val{main/budget_aware_1/train_like/success} $\to$ \val{main/budget_aware_1/heldout_long/success} $\to$ \val{main/budget_aware_1/heldout_xlong/success}). This points to a shared cause that representation alone cannot fix. On short chains the six units of slack cover cued checks, a repair and several extra checks of un-cued steps, so checking un-cued steps early pays off. On long chains the same slack has to cover more cued steps, and spending it early leaves later cued steps unchecked: fault detection at 10--14 is \val{main/ma_inv/heldout_xlong/fault_detected} for the learned agent and \val{main/budget_aware_1/heldout_xlong/fault_detected} for the budget-aware heuristic, against \val{main/cue_triggered/heldout_xlong/fault_detected} for the cue-triggered one. The best allocation genuinely depends on how many steps remain, which the invariant encoder deliberately hides and the absolute encoder exposes in a form that does not extrapolate. A representation of remaining length that does extrapolate, such as a normalised steps-remaining-per-slack ratio, is a natural next step.
+
+\subsection{Robustness to environment shifts}
+\label{sec:shifts}
+
+Table~\ref{tab:shifts} evaluates policies at lengths 7--9 under shifts they were not trained on.
+\begin{itemize}
+  \item \textbf{Fault rate.} The invariant monitorability-aware agent is robust to the fault rate (\val{main/ma_inv/fault_0.6/success} at $p_f{=}0.6$, \val{main/ma_inv/fault_0.9/success} at $p_f{=}0.9$).
+  \item \textbf{Cue quality.} It tracks the cue-triggered heuristic when cue quality changes (clean: \val{main/ma_inv/cue_clean/success} vs.\ \val{main/cue_triggered/cue_clean/success}; noisy: \val{main/ma_inv/cue_noisy/success} vs.\ \val{main/cue_triggered/cue_noisy/success}). This confirms that the policy relies on the cue rather than on a fixed checking schedule.
+  \item \textbf{Verification cost.} It degrades when checks cost more than they did in training (\val{main/ma_inv/verify_cost_3/success} at $c_V{=}3$), because it keeps checking at a rate the budget no longer supports.
+  \item \textbf{Budget slack.} Most instructively, more budget \emph{hurts}: with slack 8 instead of 6, success drops to \val{main/ma_inv/budget_extra_8/success}, while both heuristics improve. The ``invariant'' encoder is invariant to length, not to budget. With slack 8 its slack feature takes values never seen in training, which reproduces, in a different feature, the failure the absolute encoder shows on long chains.
+\end{itemize}
+In short, shifts that push observation features outside their training range break the learned policy. Shifts in task statistics (fault rate, cue quality) are handled about as well as by the heuristics. Shifts in action costs call for a different allocation, which a policy trained at one cost has no way to infer.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\caption{Success under shifts at held-out lengths 7--9, without retraining (mean over 10 seeds). $p_f$: fault probability (train: 0.8); $c_V$: verification cost (train: 1); slack: extra budget beyond the chain length (train: 6); clean/noisy cue: hit/false-positive rates $0.95/0.05$ and $0.60/0.35$ (train: $0.85/0.15$).}
+\label{tab:shifts}
+\resizebox{\linewidth}{!}{\input{tables/shift_results.tex}}
+\end{table}
+
+\input{sections/results_ablations.tex}
+
+\subsection{Training stability and sensitivity}
+\label{sec:stability}
+\label{sec:sensitivity}
+
+DQN agents in this environment exhibit severe policy churn~\citep{schaul2022churn}. Figure~\ref{fig:churn} plots greedy success for each seed of the two monitorability-aware conditions. Policies repeatedly switch between a checking solution ($\approx$0.9) and the never-check solution ($\approx$0.25) within a few thousand episodes, and the average absolute change between consecutive evaluations is \val{main/ma_inv/mean_abs_change}. Because of this, last-checkpoint results (Appendix Table~\ref{tab:final}) are lower and noisier than selected-checkpoint results: for example \ci{main/ma_inv@final/heldout_long/success} instead of \ci{main/ma_inv/heldout_long/success} at lengths 7--9. Every qualitative conclusion above holds for last checkpoints as well, including the gap between encoders (\val{main/ma_inv@final/heldout_xlong/success} versus \val{main/ma_abs@final/heldout_xlong/success} at 10--14). Selection uses only training-length validation episodes, so it cannot favour the encoder that generalizes better.
+
+\input{sections/results_sensitivity.tex}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/policy_churn.pdf}
+\caption{Greedy success on training lengths for each of the 10 seeds of the monitorability-aware agents. The dotted line marks the never-check regime. Individual runs jump between solutions throughout training.}
+\label{fig:churn}
+\end{figure}

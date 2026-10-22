@@ -17,3 +17,4 @@ paper/*.synctex.gz
 # scratch outputs
 /tmp/
 results/smoke/
+paper/draft.*

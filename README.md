@@ -1,118 +1,96 @@
-# When Does Monitorability-Aware Process RL Help?
+# Learning when to verify under a budget
 
-Tiny symbolic mechanism study for budgeted process supervision under partial observability. The project is intentionally small, CPU-friendly, and fully local: no pretrained models, no external datasets, and no cloud resources.
+[![ci](https://github.com/raj200501/UltraRL/actions/workflows/ci.yml/badge.svg)](https://github.com/raj200501/UltraRL/actions/workflows/ci.yml)
+[![paper](https://img.shields.io/badge/paper-PDF-b31b1b)](paper/main.pdf)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-## What This Repo Contains
+**Process rewards, representations, and length generalization in a small, exact testbed for budgeted self-verification.**
+Raj Kashikar · [paper (PDF)](paper/main.pdf)
 
-- `src/envs.py`: `ProcessReasoningEnv`, a procedural arithmetic-chain environment with one optional hidden faulty transition, exact local verification, backtracking, a finite budget, and a noisy local ambiguity cue.
-- `src/agents.py`: required heuristics plus a tiny masked Double DQN agent.
-- `src/train.py`: training for outcome-only RL, naive process RL, the proposed monitorability-aware reward, and the required ablations.
-- `src/evaluate.py`: evaluation on train-like depths, longer held-out depths, fault-rate shifts, verify-cost shifts, budget shifts, and cue-quality shifts.
-- `src/analysis.py`: figure/table generation plus behavior-level selectivity diagnostics from saved CSV summaries and checkpoints.
-- `paper/final.tex` and `paper/final.pdf`: the NeurIPS 2026-style writeup built from actual local results.
+Reasoning models increasingly check and revise their own steps. This project asks a narrow version of that question that can be answered exactly: *when an agent has a fixed budget, does it learn which steps are worth checking, and does what it learns transfer to longer problems?*
 
-## Strongest Honest Claim
+An agent executes an arithmetic chain that may contain one silent fault. It sees a noisy one-bit "this step looks suspicious" cue, and divides a fixed budget between `THINK` (execute a step), `VERIFY` (exactly check the last step), `REVISE` (undo it) and `COMMIT`. Because the environment is tiny and symbolic, we know exactly where every fault is, whether it was caught, and which steps were checked.
 
-The strongest supported claim is now:
+<p align="center"><img src="paper/figures/length_generalization.png" width="760" alt="Success versus chain length for each reward and observation encoder"></p>
 
-Monitorability-aware process reward can induce ambiguity-focused verification and improve in-distribution success and fault-localization diagnostics for a tiny controller, but the learned policy is brittle under longer held-out chains even when a simple hand-coded ambiguity-triggered heuristic remains strong.
+## Findings
 
-Clean multi-seed main-comparison numbers from `results/final_main_eval_summary.csv`:
+All results use 10 seeds with 95% bootstrap CIs, on evaluation episodes disjoint from training. Each learned agent uses the checkpoint selected on *training-length* validation.
 
-- On train-like depths, `Monitorability-aware RL` is the strongest learned method at `0.601 ± 0.052` success.
-- The same method reaches failed-episode localization `0.675 ± 0.057` and verification recall `0.836 ± 0.012` on train-like depths.
-- `Outcome-only RL` reaches `0.234 ± 0.099` train-like success and `0.132 ± 0.055` held-out success.
-- `Naive Process RL` reaches `0.187 ± 0.048` train-like success and `0.070 ± 0.026` held-out success.
-- `Monitorability-aware RL` drops to `0.112 ± 0.035` success on held-out longer chains.
-- A simple `Hint-Triggered Heuristic` using only the observed ambiguity cue reaches `0.827 ± 0.012` train-like success and `0.819 ± 0.019` held-out success.
+| Success rate | train lengths 3–6 | held-out 7–9 | held-out 10–14 |
+|---|---|---|---|
+| Never check (Always THINK) | 0.20 | 0.20 | 0.20 |
+| Cue-triggered heuristic | 0.87 | 0.88 | 0.85 |
+| Budget-aware heuristic (tuned on 3–6) | 0.97 | 0.82 | 0.68 |
+| Outcome-only reward, absolute obs. | 0.34 [0.29, 0.39] | 0.16 [0.09, 0.22] | 0.05 [0.00, 0.11] |
+| Monitorability-aware reward, absolute obs. | 0.76 [0.73, 0.79] | 0.31 [0.22, 0.39] | 0.03 [0.00, 0.07] |
+| Outcome-only reward, invariant obs. | 0.72 [0.65, 0.79] | 0.62 [0.50, 0.73] | 0.52 [0.40, 0.65] |
+| Naive process reward, invariant obs. | 0.85 [0.81, 0.89] | 0.76 [0.65, 0.84] | 0.65 [0.54, 0.75] |
+| **Monitorability-aware reward, invariant obs.** | **0.91** [0.89, 0.92] | **0.86** [0.84, 0.89] | **0.74** [0.69, 0.79] |
 
-The main scientific takeaway is therefore mixed: the proposed reward clearly shapes behavior, but it does not close the gap to the simple ambiguity-triggered heuristic and it does not generalize robustly to longer chains.
+1. **Process rewards make checking learnable and keep it learned.** Outcome-only agents do find checking policies, but 85% of their late checkpoints have fallen back to never checking, compared with 21% under the monitorability-aware reward. That reward also makes checking sharply cue-selective: 96% of cued steps are checked versus 17% of un-cued ones.
+2. **Length generalization is mainly a representation problem.** With absolute position features, *every* reward scheme ends up worse than never checking on chains of length 10–14. Changing only the observation to length-invariant features raises held-out success by +0.55 [0.46, 0.64] at lengths 7–9 and +0.71 [0.63, 0.77] at 10–14. At 7–9 the learned agent then matches the cue-triggered heuristic.
+3. **The remaining gap is about budget allocation.** Learned agents and the tuned budget-aware heuristic both spend slack on un-cued steps. That pays off on short chains and starves long ones. The same effect appears when shifting the budget itself: the invariant encoder's slack feature goes out of range and success drops.
+4. **DQN policies churn.** Greedy policies jump between ~0.9 and ~0.25 success throughout training, so last-checkpoint numbers understate what runs learn. Every conclusion also holds for last checkpoints (paper, Appendix C).
 
-Ablation summary from `results/final_eval_summary.csv`:
+### A correction to the earlier version
 
-- On train-like depths, the full proposed reward is stronger than its own ablations: `0.601 ± 0.052` success versus `0.387 ± 0.087` without the cue/gap monitorability extras and `0.479 ± 0.077` without the budget penalty.
-- On held-out longer chains, removing the cue/gap monitorability extras raises success only modestly to `0.141 ± 0.053` but cuts failure localization from `0.556 ± 0.083` to `0.305 ± 0.138`, while removing the budget penalty raises success to `0.291 ± 0.090` with negative cost-adjusted accuracy.
+The first version of this repository concluded that monitorability-aware RL "remains brittle under longer held-out chains" (0.60 → 0.11). A controlled re-run showed that this was mostly caused by absolute position features in the observation, compounded by under-training and last-checkpoint evaluation. The earlier pipeline also had two measurement bugs, now fixed and covered by regression tests:
 
-Behavior and robustness diagnostics from `paper/tables/selectivity_results.csv` and `paper/tables/cue_shift_results.csv`:
+- Seed 0's evaluation episodes duplicated training episodes.
+- A localization metric gave credit for faults nobody checked; the never-check policy scored 0.07 on it.
 
-- On train-like depths, `Monitorability-aware RL` verifies much more often when the cue is high than when it is low: `0.381 ± 0.030` versus `0.142 ± 0.034`.
-- `Outcome-only RL` is much less selective by the same diagnostic: `0.261 ± 0.066` versus `0.279 ± 0.057`.
-- On held-out longer chains, cleaner cues help `Monitorability-aware RL` only modestly: success rises from `0.083 ± 0.037` under noisy cues to `0.137 ± 0.038` under clean cues, while localization rises from `0.441 ± 0.061` to `0.629 ± 0.093`.
+Appendix D of the paper lists every change.
 
-## Likely Submission Framing
+## Repository layout
 
-Honest recommendation:
-
-- `Main Track Concept & Feasibility`
-- or `Main Track Negative Results`
-
-This is stronger than the repo’s earlier purely negative draft, but it is still not a clean method paper. The strongest story is a mechanism result about in-distribution ambiguity checking plus a clear out-of-distribution failure mode.
-
-## Reproduction
-
-Create the environment:
-
-```bash
-python3.11 -m venv .venv
-./.venv/bin/pip install -r requirements.txt
+```
+src/ultrarl/
+  env.py            ChainEnv: dynamics, budget, masks, per-episode metrics
+  rewards.py        outcome-only / naive process / monitorability-aware rewards
+  observations.py   absolute, length-invariant and slack-ratio encoders
+  policies.py       hand-coded reference policies (observable information only)
+  dqn.py            masked Double DQN with a numpy replay buffer
+  train.py          one training run: learning curve + best/final checkpoints
+  rollout.py        evaluation rollouts on disjoint RNG streams, metric aggregation
+  run.py            parallel, resumable experiment runner (train -> eval -> summary)
+  stats.py          bootstrap CIs over seeds, paired differences
+  report.py         every figure, table and number in the paper, from results/
+configs/            main.yaml, ablations.yaml, sensitivity.yaml, ratio.yaml
+results/<exp>/      checkpoints, learning curves, per-seed and summary CSVs
+paper/              LaTeX source; numbers.tex is generated, so the text cannot drift from results/
+tests/              60+ tests: dynamics, rewards, metrics, seeding, DQN, configs, end-to-end
 ```
 
-Run the fast smoke test:
+## Reproducing
 
 ```bash
-make smoke
+pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU is enough
+pip install -e ".[dev]"
+
+make test         # unit + integration tests (~25 s)
+make smoke        # whole pipeline end to end on a tiny budget (~20 s)
+make report       # regenerate all figures/tables/numbers from the saved results (no training)
+make paper        # ... and rebuild paper/main.pdf (needs a LaTeX install)
+make experiments  # retrain everything from scratch: ~4 h on a 4-core CPU, no GPU
 ```
 
-Run the default pipeline:
+Training is deterministic given a seed (CPU, single thread), so `make experiments` reproduces the saved checkpoints. Runs are resumable: an interrupted experiment continues from the checkpoints already on disk.
 
-```bash
-make train
-make eval
-make analyze
-make paper
+## Engineering notes
+
+- **Verified rewrite.** The environment was rewritten for clarity. A step-by-step comparison against the original implementation (86k random steps, all reward schemes) found zero differences in dynamics, masks, rewards or observations.
+- **No leakage by construction.** Training, validation and evaluation episodes come from disjoint seed streams (tested). Checkpoint selection may only use a training-length setting; the config loader rejects anything else.
+- **Fair heuristics.** Reference policies see only what the agents could observe. The budget-aware heuristic's margin is tuned on training lengths with `scripts/tune_heuristic.py`.
+- **Numbers come from code.** `paper/numbers.tex` is written by `ultrarl.report`. A reference to a missing result is a LaTeX error, not a silently blank number.
+
+## Citation
+
+```bibtex
+@misc{kashikar2026verify,
+  title  = {Learning When to Verify Under a Budget: Process Rewards, Representations, and Length Generalization},
+  author = {Kashikar, Raj},
+  year   = {2026},
+  url    = {https://github.com/raj200501/UltraRL}
+}
 ```
-
-Or all at once:
-
-```bash
-make all
-```
-
-During this development pass I also added optional path overrides to `src/train.py`, `src/evaluate.py`, and `src/analysis.py` so a clean experiment can be run in a separate results namespace if another process is already writing to the default `results/` paths.
-
-## Main Outputs
-
-- Raw training logs: `results/train_logs/*.csv`
-- Checkpoints: `results/checkpoints/*.pt`
-- Episode-level evaluation CSVs: `results/eval/*.csv`
-- Aggregated summaries: `results/eval_seed_summary.csv`, `results/eval_summary.csv`
-- Clean isolated final-run artifacts from this iteration: `results/final_*`
-- Paper figures: `paper/figures/`
-- Paper tables: `paper/tables/`
-- Internal workshop-style review rounds and responses: `paper/reviews/`
-- Final PDF: `paper/final.pdf`
-
-## Resource Footprint
-
-- Full repo footprint after experiments, figures, paper sources, vendored compile assets, and the local `.venv`: about `809 MB`
-- Hardware used for the reported run: `Apple M1 MacBook Air`, `8 CPU cores`, `8 GB` memory
-- No GPU, no cloud, no external APIs
-
-## Notes on Paper Compilation
-
-The paper uses the official NeurIPS 2026 style files in `paper/`. To make local compilation deterministic in this restricted environment, the repo also vendors the small CTAN `lineno` package and Latin Modern font resources needed by `tectonic --only-cached`.
-
-## External Assets
-
-- Official NeurIPS 2026 style bundle from `neurips.cc`
-- CTAN `lineno` package for `lineno.sty`
-- CTAN Latin Modern fonts package for local PDF compilation
-- Python packages listed in `requirements.txt`
-
-No pretrained models or external datasets are used.
-
-## NeurIPS 2026 Note
-
-Per the official NeurIPS 2026 Main Track Handbook, accepted papers require in-person registration and presentation by at least one author. A virtual-only pass is not sufficient for presenting an accepted paper.
-
-NeurIPS 2026 workshop-specific submission rules are workshop-dependent and were not centrally published in a single official format guide at the time of this revision. This repo therefore targets the official NeurIPS 2026 style, anonymity, paper-ordering, and checklist requirements as the strongest general baseline for workshop readiness.

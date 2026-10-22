@@ -1,0 +1,32 @@
+\section{Introduction}
+\label{sec:intro}
+
+Reinforcement learning has produced language models that spend test-time compute on long chains of reasoning, including checking and revising their own steps~\citep{openai2024reasoning,deepseek2025r1,snell2024scaling}. Two lines of work make this behaviour a target in its own right. Process supervision rewards individual reasoning steps rather than only final answers~\citep{uesato2022process,lightman2024verify}. Work on chain-of-thought monitorability asks whether reasoning traces stay legible enough to oversee, and warns that optimising against a monitor can make them less so~\citep{baker2025monitoring,korbak2025cot,openai2025monitorability}. Both lines touch a basic metareasoning question~\citep{russell1991principles,hay2012selecting}: with a finite budget, \emph{which} steps are worth checking, and does a learned answer to that question survive when the problem gets longer?
+
+That question is hard to study in language models, where the location of an error, the value of a check and the faithfulness of a trace~\citep{turpin2023unfaithful,lanham2023faithfulness,chen2025reasoning} are all hard to measure. We therefore isolate it in a small testbed (\S\ref{sec:setup}). An agent executes an arithmetic chain that may contain one silent fault. It sees a noisy one-bit cue per step and can execute, verify, undo or commit, each non-commit action consuming a fixed budget. The task admits strong hand-coded policies (a cue-triggered checker solves 85--88\% of episodes at every length we test), so failures of learning cannot be blamed on an impossible task. Because every quantity is exact, we can separate three things that are entangled in realistic settings: whether an agent learns to check at all, whether it checks the \emph{right} steps, and whether the behaviour transfers to longer chains than it was trained on.
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item A small, fast and fully tested environment for budgeted verification, with exact fault, detection and selectivity metrics, three reward schemes, two observation encoders and hand-coded reference policies (\S\ref{sec:setup}--\ref{sec:method}).
+  \item Evidence that process rewards mainly help agents \emph{discover and retain} checking behaviour. Outcome-only DQN agents find checking policies but usually lose them again. A monitorability-aware reward retains them and induces sharply cue-selective checking (\S\ref{sec:learnability}, \S\ref{sec:selectivity}).
+  \item Evidence that length generalization of the learned checking policy is dominated by representation. Absolute position features drive every reward scheme below a never-check baseline on long chains, while length-invariant features recover most of the performance, with a remaining gap that we trace to how agents spend their budget slack (\S\ref{sec:length}--\ref{sec:residual}).
+  \item Reward ablations, robustness to shifts in fault rate, verification cost, budget and cue quality, and a training-stability analysis showing pervasive policy churn~\citep{schaul2022churn} (\S\ref{sec:ablations}--\ref{sec:stability}).
+\end{itemize}
+
+\paragraph{A correction.}
+An earlier version of this project, using the same environment and rewards, concluded that monitorability-aware RL ``remains brittle under longer held-out chains''. Re-running it with a controlled comparison changed that conclusion. The main cause was the absolute position features in the observation, compounded by $4{\times}$ less training and last-checkpoint evaluation. The earlier pipeline also had two measurement bugs: evaluation episodes overlapped training episodes for one seed, and a localization metric gave credit for faults nobody checked. Appendix~\ref{app:changes} lists every change. We report this because, at larger scale, the same confounds (positional shortcuts, unstable policies, evaluation leakage) can make a reward look responsible for failures it did not cause.
+
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Process supervision and verification.}
+Step-level feedback improves the reliability of mathematical reasoning~\citep{uesato2022process,lightman2024verify}, and RL on verifiable tasks can elicit self-checking~\citep{deepseek2025r1,xie2025logicrl}. These works ask whether process feedback helps. We ask a narrower question in a controlled setting: when a process reward helps an agent learn to check, what has it learned, and does that transfer? Our learned rewards are hand-specified with privileged access to step correctness. They therefore stand in for an \emph{accurate} process reward model and measure what such a model could do at best.
+
+\paragraph{Monitorability and faithfulness.}
+Reasoning traces can be informative about model behaviour~\citep{baker2025monitoring,korbak2025cot}, but they are not guaranteed to be faithful~\citep{turpin2023unfaithful,lanham2023faithfulness,chen2025reasoning}, and optimisation pressure on traces can induce obfuscation~\citep{baker2025monitoring}. Our ``monitorability-aware'' reward is a toy instance of rewarding traces that remain locally diagnosable: it pays for checks that catch or rule out faults and penalises long unchecked stretches. Our environment has no notion of a model hiding its reasoning, so we make no claims about faithfulness.
+
+\paragraph{Metareasoning and adaptive computation.}
+Deciding which computation to perform next is classical metareasoning~\citep{russell1991principles,hay2012selecting}, and adaptive computation time learns how long to think~\citep{graves2016adaptive}. Our agents learn a value-of-information policy for checking, without being given the posterior over fault locations.
+
+\paragraph{Generalization and evaluation in RL.}
+Deep RL agents overfit their training distribution~\citep{cobbe2019quantifying,kirk2023survey}, and neural networks often fail to generalize to longer inputs than seen in training~\citep{anil2022length,deletang2023chomsky}. Our length-generalization result is a small, controlled instance of this: it comes down to whether the observation lets the policy depend on absolute position. Methodologically we follow recommendations to report many seeds with interval estimates rather than point estimates~\citep{henderson2018matters,agarwal2021precipice}. We also document policy churn~\citep{schaul2022churn}: greedy policies that change abruptly between updates, which makes last-checkpoint evaluation unreliable.
