@@ -87,3 +87,25 @@ def test_gap_term_telescopes_to_terminal_gap():
 def test_unknown_scheme_raises():
     with pytest.raises(ValueError):
         compute_reward(EnvConfig(reward_scheme="nope"), StepEvent(action="THINK", depth=3, cost=1))
+
+
+def test_fault_bonus_on_repair_moves_the_bonus_from_detection_to_repair():
+    base = dict(reward_scheme="monitorability_aware", budget_penalty=False, ma_gap_penalty=0.0)
+    cues = [0, 0, 1, 0]
+    on_detect = rewards_for(EnvConfig(**base), [T, T, V, R, T], depth=3, fault=1, cues=cues)
+    on_repair = rewards_for(
+        EnvConfig(**base, ma_fault_bonus_on_repair=True), [T, T, V, R, T], depth=3, fault=1, cues=cues
+    )
+    cfg = EnvConfig(**base)
+    assert on_detect[2] == pytest.approx(cfg.ma_fault_verify_bonus + cfg.ma_cue_verify_bonus)
+    assert on_repair[2] == pytest.approx(cfg.ma_cue_verify_bonus)  # detection alone: cue bonus only
+    assert on_detect[4] == pytest.approx(0.0)
+    assert on_repair[4] == pytest.approx(cfg.ma_fault_verify_bonus)  # paid when the fault is re-executed correctly
+
+
+def test_gap_refund_makes_downstream_check_net_positive():
+    # Documents a property of the original reward discussed in the paper: the gap
+    # refund outweighs the wasted-check penalty for a check downstream of a hidden fault.
+    cfg = EnvConfig(reward_scheme="monitorability_aware")
+    rs = rewards_for(cfg, [T, T, V], depth=3, fault=0, cues=[0, 0, 0, 0])
+    assert rs[2] > 0

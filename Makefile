@@ -1,7 +1,8 @@
 PYTHON ?= python
 WORKERS ?= 4
+EXPERIMENTS := main ablations sensitivity followups
 
-.PHONY: install test lint smoke main ablations sensitivity experiments report paper all clean
+.PHONY: install test lint smoke report paper experiments reproduce equivalence clean $(EXPERIMENTS)
 
 install:  ## editable install with dev tools (CPU torch is enough)
 	$(PYTHON) -m pip install -e ".[dev]"
@@ -13,28 +14,34 @@ lint:
 	ruff check src tests scripts
 	ruff format --check src tests scripts
 
-smoke:  ## ~20 s end-to-end run of the whole pipeline
+smoke:  ## ~30 s end-to-end run of the whole pipeline in a scratch directory
+	rm -rf results/smoke
 	$(PYTHON) -m ultrarl.run --config configs/main.yaml --out results/smoke --smoke --workers $(WORKERS)
 
-main:
-	$(PYTHON) -m ultrarl.run --config configs/main.yaml --out results/main --workers $(WORKERS)
-
-ablations:
-	$(PYTHON) -m ultrarl.run --config configs/ablations.yaml --out results/ablations --workers $(WORKERS)
-
-sensitivity:
-	$(PYTHON) -m ultrarl.run --config configs/sensitivity.yaml --out results/sensitivity --workers $(WORKERS)
-
-experiments: main ablations sensitivity
-
-report:  ## figures + tables from results/ (no training needed)
+report:  ## every figure, table and number in the paper, from the saved results (no training)
 	$(PYTHON) -m ultrarl.report --results results --paper paper
 
 paper: report
 	cd paper && latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 
-all: experiments paper
+# Resume or extend the saved experiments in results/: runs whose checkpoints
+# already exist (and match the config) are skipped, evaluation is recomputed.
+$(EXPERIMENTS):
+	$(PYTHON) -m ultrarl.run --config configs/$@.yaml --out results/$@ --workers $(WORKERS)
+
+experiments: $(EXPERIMENTS)
+
+# Retrain everything from scratch into results_repro/ (~4.5 h on 4 cores) and
+# check that every checkpoint is bitwise identical to the saved one.
+reproduce:
+	@for exp in $(EXPERIMENTS); do \
+	  $(PYTHON) -m ultrarl.run --config configs/$$exp.yaml --out results_repro/$$exp --workers $(WORKERS) || exit 1; \
+	  $(PYTHON) scripts/compare_checkpoints.py results/$$exp results_repro/$$exp || exit 1; \
+	done
+
+equivalence:  ## rewritten environment vs. the original implementation, step by step
+	$(PYTHON) scripts/check_legacy_equivalence.py
 
 clean:
-	rm -rf results/smoke
-	cd paper && latexmk -C main.tex
+	rm -rf results/smoke results_repro
+	cd paper && latexmk -c main.tex

@@ -174,3 +174,53 @@ def test_incomplete_commit_metrics():
     env.reset(seed=0, depth_range=(3, 3), fault_index=None)
     m = play(env, [T, T, T, C])["metrics"]
     assert m["incomplete_commit"] == 0.0 and m["success"] == 1.0
+
+
+def test_incomplete_commit_only_voluntary_if_chain_could_still_finish():
+    env = ChainEnv(EnvConfig(budget_extra=1))  # budget 4 for a 3-step chain
+    env.reset(seed=0, depth_range=(3, 3), fault_index=None)
+    play(env, [T, V])  # wastes a unit: remaining 2 budget, 2 steps left -> could finish
+    m = play(env, [C])["metrics"]
+    assert m["voluntary_incomplete_commit"] == 1.0
+    env.reset(seed=0, depth_range=(3, 3), fault_index=None)
+    play(env, [T, V, V])  # remaining 1 budget, 2 steps left -> could not finish
+    m = play(env, [C])["metrics"]
+    assert m["incomplete_commit"] == 1.0 and m["voluntary_incomplete_commit"] == 0.0
+
+
+def test_repair_and_nonrepair_revise_accounting(env):
+    env.reset(seed=0, depth_range=(3, 3), fault_index=1)
+    info = play(env, [T, V, R, T, T, V, R, T, T, C])  # one no-op REVISE, then a genuine repair
+    m = info["metrics"]
+    assert m["revise_count"] == 2.0 and m["nonrepair_revise_count"] == 1.0
+    assert m["success"] == 1.0 and m["success_given_detected"] == 1.0
+    assert env.repaired
+
+
+def test_detect_without_repair_is_counted(env):
+    env.reset(seed=0, depth_range=(3, 3), fault_index=1)
+    m = play(env, [T, T, V, T, C])["metrics"]  # catches the fault, never repairs it
+    assert m["fault_detected"] == 1.0 and m["success_given_detected"] == 0.0
+    env.reset(seed=0, depth_range=(3, 3), fault_index=None)
+    assert np.isnan(play(env, [T, T, T, C])["metrics"]["success_given_detected"])
+
+
+def test_memory_bit_disambiguates_repair_from_noop():
+    # A genuine repair (UNSAFE, REVISE, THINK) and a no-op REVISE+THINK after a SAFE
+    # check look identical without memory; the memory encoder tells them apart.
+    def final_obs(kind, fault):
+        env = ChainEnv(EnvConfig(observation=kind))
+        env.reset(seed=0, depth_range=(3, 3), fault_index=fault)
+        env.cues = [0, 0, 0, 0]
+        play(env, [T, T, V, R, T])
+        return env.observation()
+
+    assert np.array_equal(final_obs("invariant", 1), final_obs("invariant", None))
+    assert not np.array_equal(final_obs("memory", 1), final_obs("memory", None))
+
+
+def test_config_rejects_unknown_observation_and_scheme():
+    with pytest.raises(ValueError):
+        EnvConfig(observation="polar")
+    with pytest.raises(ValueError):
+        EnvConfig(reward_scheme="vibes")

@@ -64,3 +64,27 @@ def test_soft_update_moves_target_towards_online():
     agent.soft_update_target(0.25)
     for b, t, o in zip(before, agent.target.parameters(), agent.online.parameters(), strict=True):
         assert torch.allclose(t, 0.75 * b + 0.25 * o)
+
+
+def _set_linear_q(net, q_per_action):
+    """Make a QNetwork output constant Q-values regardless of the input."""
+    with torch.no_grad():
+        for p in net.parameters():
+            p.zero_()
+        net.net[-1].bias.copy_(torch.tensor(q_per_action))
+
+
+def test_double_dqn_target_masks_terminates_and_decouples_networks():
+    agent = DQNAgent(obs_dim=2, num_actions=3, hidden_size=4)
+    _set_linear_q(agent.online, [5.0, 1.0, 3.0])  # online prefers action 0, then 2
+    _set_linear_q(agent.target, [10.0, 20.0, 30.0])
+    batch = {
+        "next_obs": torch.zeros(3, 2),
+        "rewards": torch.tensor([1.0, 1.0, 1.0]),
+        "dones": torch.tensor([0.0, 0.0, 1.0]),
+        "next_masks": torch.tensor([[True, True, True], [False, True, True], [True, True, True]]),
+    }
+    target = agent.td_target(batch, gamma=0.5)
+    # row 0: online argmax = 0 -> target net value 10; row 1: action 0 masked -> argmax 2 -> 30;
+    # row 2: terminal -> no bootstrap.
+    assert torch.allclose(target, torch.tensor([1.0 + 0.5 * 10.0, 1.0 + 0.5 * 30.0, 1.0]))

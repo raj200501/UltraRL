@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this code or build on these results, please cite it as below."
-title: "UltraRL: When does process-aware reward teach a small agent to verify?"
+title: "Learning When to Verify Under a Budget: Process Rewards, Representations, and Length Generalization"
 authors:
   - family-names: Kashikar
     given-names: Raj

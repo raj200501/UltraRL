@@ -18,3 +18,4 @@ paper/*.synctex.gz
 /tmp/
 results/smoke/
 paper/draft.*
+results_repro/

@@ -90,15 +90,20 @@ class DQNAgent:
         q = np.where(mask, self.q_values(obs), MASKED_Q)
         return int(np.argmax(q))
 
+    @torch.no_grad()
+    def td_target(self, batch: dict[str, torch.Tensor], gamma: float) -> torch.Tensor:
+        """Double DQN target: the online net picks the next action among available
+        ones, the target net evaluates it; terminal transitions do not bootstrap."""
+        next_online = self.online(batch["next_obs"]).masked_fill(~batch["next_masks"], MASKED_Q)
+        next_actions = next_online.argmax(dim=1, keepdim=True)
+        next_q = self.target(batch["next_obs"]).gather(1, next_actions).squeeze(1)
+        return batch["rewards"] + gamma * (1.0 - batch["dones"]) * next_q
+
     def update(
         self, optimizer: torch.optim.Optimizer, batch: dict[str, torch.Tensor], gamma: float, grad_clip: float
     ) -> float:
         q = self.online(batch["obs"]).gather(1, batch["actions"][:, None]).squeeze(1)
-        with torch.no_grad():
-            next_online = self.online(batch["next_obs"]).masked_fill(~batch["next_masks"], MASKED_Q)
-            next_actions = next_online.argmax(dim=1, keepdim=True)
-            next_q = self.target(batch["next_obs"]).gather(1, next_actions).squeeze(1)
-            target = batch["rewards"] + gamma * (1.0 - batch["dones"]) * next_q
+        target = self.td_target(batch, gamma)
         loss = nn.functional.smooth_l1_loss(q, target)
         optimizer.zero_grad()
         loss.backward()

@@ -46,6 +46,7 @@ class EnvConfig:
     ma_low_cue_penalty: float = 0.02
     ma_waste_verify_penalty: float = 0.06
     ma_gap_penalty: float = 0.30
+    ma_fault_bonus_on_repair: bool = False  # pay the fault bonus on repair instead of detection
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "train_depth_range", tuple(self.train_depth_range))
@@ -59,6 +60,13 @@ class EnvConfig:
                 raise ValueError(f"{name} must be a probability")
         if self.fault_profile not in ("middle", "uniform"):
             raise ValueError(f"unknown fault_profile {self.fault_profile!r}")
+        from ultrarl.observations import OBSERVATION_KINDS
+        from ultrarl.rewards import REWARD_SCHEMES
+
+        if self.observation not in OBSERVATION_KINDS:
+            raise ValueError(f"unknown observation {self.observation!r}; expected one of {OBSERVATION_KINDS}")
+        if self.reward_scheme not in REWARD_SCHEMES:
+            raise ValueError(f"unknown reward_scheme {self.reward_scheme!r}; expected one of {REWARD_SCHEMES}")
 
     def replace(self, **overrides: Any) -> EnvConfig:
         unknown = set(overrides) - {f.name for f in dataclasses.fields(self)}
@@ -177,6 +185,9 @@ def load_experiment(path: str | Path, *, smoke: bool = False) -> ExperimentConfi
         eval_episodes=int(evaluation["episodes"]),
         curve_settings=tuple(_setting(s) for s in evaluation.get("curve_settings", [])),
     )
+    for setting in exp.eval_settings + exp.curve_settings:  # validate setting overrides eagerly
+        for method in methods:
+            exp.method_env(method, setting)
     _check_selection_setting(exp)
     return exp
 
@@ -193,3 +204,5 @@ def _check_selection_setting(exp: ExperimentConfig) -> None:
         train_low, train_high = exp.method_env(method).train_depth_range
         if low < train_low or high > train_high:
             raise ValueError(f"select_setting {name!r} uses lengths outside the training range")
+        if matches[0].env_overrides:
+            raise ValueError(f"select_setting {name!r} must use the training distribution (no env_overrides)")

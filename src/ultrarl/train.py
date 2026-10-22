@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -27,6 +28,10 @@ def epsilon_at(episode: int, episodes: int, start: float, end: float, decay_frac
 
 def greedy_act(agent: DQNAgent):
     return lambda obs, _observable, mask: agent.act(obs, mask)
+
+
+def curve_path(out_dir: Path, method: Method, seed: int) -> Path:
+    return out_dir / "curves" / f"{method.name}_seed{seed}.csv"
 
 
 def checkpoint_path(out_dir: Path, method: Method, seed: int, which: str = "best") -> Path:
@@ -110,17 +115,26 @@ def train_run(exp: ExperimentConfig, method: Method, seed: int, out_dir: Path, v
         "parameter_count": agent.parameter_count(),
     }
     metadata["wall_seconds"] = round(time.time() - start_time, 1)
-    final_path = checkpoint_path(out_dir, method, seed, "final")
-    final_path.parent.mkdir(parents=True, exist_ok=True)
-    agent.save(final_path, {**metadata, "checkpoint": "final", "checkpoint_episode": tc.episodes})
+    # Write the curve, then the selected checkpoint, then the final checkpoint (the
+    # completion marker), each atomically, so an interrupted run is never mistaken
+    # for a finished one.
+    curve_file = curve_path(out_dir, method, seed)
+    curve_file.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(curve).to_csv(curve_file.with_suffix(".tmp"), index=False)
+    os.replace(curve_file.with_suffix(".tmp"), curve_file)
+    final_state = copy.deepcopy(agent.online.state_dict())
+    best_path = checkpoint_path(out_dir, method, seed, "best")
+    best_path.parent.mkdir(parents=True, exist_ok=True)
     agent.online.load_state_dict(best_state)
     agent.save(
-        checkpoint_path(out_dir, method, seed, "best"),
+        best_path.with_suffix(".tmp"),
         {**metadata, "checkpoint": "best", "checkpoint_episode": best_episode, "selection_success": best_score},
     )
-    curve_dir = out_dir / "curves"
-    curve_dir.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(curve).to_csv(curve_dir / f"{method.name}_seed{seed}.csv", index=False)
+    os.replace(best_path.with_suffix(".tmp"), best_path)
+    agent.online.load_state_dict(final_state)
+    final_path = checkpoint_path(out_dir, method, seed, "final")
+    agent.save(final_path.with_suffix(".tmp"), {**metadata, "checkpoint": "final", "checkpoint_episode": tc.episodes})
+    os.replace(final_path.with_suffix(".tmp"), final_path)
     return {
         "method": method.name,
         "seed": seed,

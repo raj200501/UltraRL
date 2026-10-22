@@ -5,22 +5,26 @@ Usage::
     python -m ultrarl.run --config configs/main.yaml --out results/main
     python -m ultrarl.run --config configs/main.yaml --out /tmp/smoke --smoke
 
-Training is resumable: runs whose checkpoint already exists are skipped unless
-``--retrain`` is given. Outputs under ``--out``:
+Training is resumable: a run whose curve and both checkpoints exist is skipped,
+after checking that the checkpoint was trained with the current config (pass
+``--retrain`` to overwrite, or use a fresh ``--out``). Outputs under ``--out``:
 
-    checkpoints/<method>_seed<k>.pt   trained agents
-    curves/<method>_seed<k>.csv       greedy learning curves
-    train_runs.csv                    one row per training run
-    eval_per_seed.csv                 one row per (setting, method, seed)
-    eval_summary.csv                  mean and 95% bootstrap CI over seeds
+    checkpoints/<method>_seed<k>_{best,final}.pt   selected and last checkpoints
+    curves/<method>_seed<k>.csv                    greedy learning curves
+    train_runs.csv                                 one row per training run
+    eval_per_seed.csv                              one row per (setting, method, seed)
+    eval_summary.csv                               mean and 95% t-interval over seeds
+    config.yaml, run_info.json                     the config and mode the outputs belong to
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import hashlib
+import json
 import multiprocessing as mp
 import os
-import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -28,12 +32,12 @@ from typing import Any
 import pandas as pd
 import torch
 
-from ultrarl.config import ExperimentConfig, load_experiment
+from ultrarl.config import ExperimentConfig, Method, load_experiment
 from ultrarl.dqn import DQNAgent
 from ultrarl.policies import build_heuristic
 from ultrarl.rollout import evaluate
 from ultrarl.stats import summarize
-from ultrarl.train import checkpoint_path, greedy_act, train_run
+from ultrarl.train import checkpoint_path, curve_path, greedy_act, train_run
 
 SUMMARY_METRICS = [
     "success",
@@ -42,10 +46,12 @@ SUMMARY_METRICS = [
     "num_actions",
     "verify_count",
     "revise_count",
+    "nonrepair_revise_count",
     "incomplete_commit",
     "voluntary_incomplete_commit",
     "fault_detected",
     "repair_success",
+    "success_given_detected",
     "clean_success",
     "verify_precision",
     "verify_rate_cue0",
@@ -102,12 +108,49 @@ def _pool_map(fn, jobs: list, workers: int) -> list:
         return list(pool.imap_unordered(fn, jobs))
 
 
+def _normalise(value: Any) -> Any:
+    return list(value) if isinstance(value, tuple) else value
+
+
+def _config_mismatches(current: Any, recorded: dict[str, Any]) -> list[str]:
+    """Fields where a checkpoint's recorded config differs from ``current``.
+
+    Fields added to the config after the checkpoint was written must still have
+    their default value.
+    """
+    defaults = type(current)()
+    problems = []
+    for field in dataclasses.fields(current):
+        value = _normalise(getattr(current, field.name))
+        expected = recorded[field.name] if field.name in recorded else _normalise(getattr(defaults, field.name))
+        if _normalise(expected) != value:
+            problems.append(f"{field.name}: checkpoint={expected!r} config={value!r}")
+    return problems
+
+
+def run_complete(exp: ExperimentConfig, out: Path, method: Method, seed: int) -> bool:
+    """True if a finished run exists; raises if it was trained with a different config."""
+    files = [checkpoint_path(out, method, seed, "final"), checkpoint_path(out, method, seed, "best")]
+    files.append(curve_path(out, method, seed))
+    if not all(path.exists() for path in files):
+        return False
+    _, meta = DQNAgent.load(files[0])
+    problems = _config_mismatches(exp.method_train(method), meta["train_config"])
+    problems += _config_mismatches(exp.method_env(method), meta["env_config"])
+    if problems:
+        raise RuntimeError(
+            f"{files[0]} was trained with a different config ({'; '.join(problems)}). "
+            "Use --retrain to overwrite it or a fresh --out directory."
+        )
+    return True
+
+
 def train_all(exp: ExperimentConfig, config_path: str, smoke: bool, out: Path, workers: int, retrain: bool) -> None:
     jobs = [
         (config_path, smoke, m.name, s, str(out))
         for m in exp.learned_methods
         for s in exp.seeds
-        if retrain or not checkpoint_path(out, m, s, "final").exists()
+        if retrain or not run_complete(exp, out, m, s)
     ]
     print(f"[train] {len(jobs)} runs to train ({workers} workers)", flush=True)
     _pool_map(_train_job, jobs, workers)
@@ -159,6 +202,25 @@ def evaluate_all(exp: ExperimentConfig, config_path: str, smoke: bool, out: Path
     return summary
 
 
+def _check_output_dir(out: Path, config_path: str, smoke: bool, retrain: bool) -> None:
+    """Refuse to mix smoke and full outputs; record the config the outputs belong to.
+
+    Individual checkpoints are additionally checked against the config in ``run_complete``.
+    """
+    text = Path(config_path).read_text(encoding="utf-8")
+    info = {"config_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "smoke": smoke}
+    info_path = out / "run_info.json"
+    if info_path.exists() and not retrain:
+        recorded = json.loads(info_path.read_text(encoding="utf-8"))
+        if recorded.get("smoke") != smoke:
+            kind = "smoke" if recorded.get("smoke") else "full"
+            raise RuntimeError(f"{out} holds {kind} outputs; use another --out (or --retrain)")
+    target = out / "config.yaml"
+    if not (target.exists() and target.resolve() == Path(config_path).resolve()):
+        target.write_text(text, encoding="utf-8")
+    info_path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", required=True)
@@ -172,7 +234,7 @@ def main(argv: list[str] | None = None) -> None:
     exp = load_experiment(args.config, smoke=args.smoke)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(args.config, out / "config.yaml")
+    _check_output_dir(out, args.config, args.smoke, args.retrain)
     start = time.time()
     if args.stage in ("train", "all"):
         train_all(exp, args.config, args.smoke, out, args.workers, args.retrain)

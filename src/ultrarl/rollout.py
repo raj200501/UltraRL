@@ -10,7 +10,10 @@ import numpy as np
 from ultrarl.config import EnvConfig, EvalSetting
 from ultrarl.env import ChainEnv, Observable
 
-# Disjoint RNG streams: an episode seed is (stream, run seed, setting id, episode).
+# Independent RNG streams: an episode seed is (stream, run seed, setting id, episode).
+# Streams guarantee independent sampling of training, validation and evaluation
+# episodes; on training lengths the same small set of task configurations recurs
+# in all of them, so training-length evaluation is in-distribution by design.
 TRAIN_STREAM = 0
 CURVE_STREAM = 1
 EVAL_STREAM = 2
@@ -73,11 +76,13 @@ def aggregate(rows: list[dict[str, float]]) -> dict[str, float]:
         "cost_adjusted_accuracy": nanmean(cols["cost_adjusted_accuracy"]),
         "verify_count": nanmean(cols["verify_count"]),
         "revise_count": nanmean(cols["revise_count"]),
+        "nonrepair_revise_count": nanmean(cols["nonrepair_revise_count"]),
         "incomplete_commit": nanmean(cols["incomplete_commit"]),
         "voluntary_incomplete_commit": nanmean(cols["voluntary_incomplete_commit"]),
         "fault_rate": nanmean(cols["fault_present"]),
         "fault_detected": nanmean(cols["fault_detected"]),
         "repair_success": nanmean(cols["repair_success"]),
+        "success_given_detected": nanmean(cols["success_given_detected"]),
         "verify_precision": ratio(cols["verify_tp"].sum(), cols["verify_count"].sum()),
         "verify_rate_cue0": ratio(cols["fresh_verifies_cue0"].sum(), cols["fresh_opps_cue0"].sum()),
         "verify_rate_cue1": ratio(cols["fresh_verifies_cue1"].sum(), cols["fresh_opps_cue1"].sum()),

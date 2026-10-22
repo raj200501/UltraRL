@@ -42,3 +42,9 @@ def test_absolute_observation_depends_on_chain_length():
 def test_unknown_kind_raises():
     with pytest.raises(ValueError):
         observation_dim("polar")
+
+
+def test_ratio_feature_is_slack_per_remaining_step():
+    env = ChainEnv(EnvConfig(observation="ratio", budget_extra=6))
+    obs = env.reset(seed=0, depth_range=(4, 4))
+    assert obs[-1] == pytest.approx(min(6 / 4, 2.0) / 2.0)

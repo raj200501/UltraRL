@@ -17,16 +17,22 @@ and differ only in the per-step *process* term added on top:
     rewards informative verification and penalises unverified stretches:
 
     +ma_safe_verify_bonus    first-time VERIFY of a correct step
-    +ma_fault_verify_bonus   first-time VERIFY that catches the fault
+    +ma_fault_verify_bonus   first-time VERIFY that catches the fault (or, with
+                             ``ma_fault_bonus_on_repair``, the first correct
+                             re-execution of the located fault)
     +ma_cue_verify_bonus     informative VERIFY of a step whose cue fired
     -ma_low_cue_penalty      informative SAFE VERIFY of a step whose cue did not fire
     -ma_waste_verify_penalty uninformative VERIFY (repeat, or check downstream of an
                              undetected fault)
     -ma_gap_penalty * (g' - g) / depth   change in the unchecked gap g
 
-The gap term telescopes to ``-ma_gap_penalty * g_T / depth`` over an episode, i.e.
-it is (up to discounting) a potential-based term plus a terminal penalty on
-committing with unchecked steps.
+Here ``g = t - max(checked)`` is the number of steps executed since the
+highest-index checked step. The gap term telescopes to
+``-ma_gap_penalty * g_T / depth`` over an episode: (up to discounting) a
+potential-based term plus a terminal penalty that depends only on the distance
+from the last *checked index* to the end, not on how many steps are unchecked.
+One check of the final step cancels it, and every action that lowers ``g``
+(including an uninformative check or a REVISE) is refunded.
 """
 
 from __future__ import annotations
@@ -53,6 +59,7 @@ class StepEvent:
     cue: int = 0
     gap_before: int = 0
     gap_after: int = 0
+    repaired: bool = False  # THINK correctly re-executed the located fault
 
     @property
     def safe_check(self) -> bool:
@@ -93,7 +100,7 @@ def process_reward(cfg: EnvConfig, event: StepEvent) -> float:
         reward = 0.0
         if event.safe_check:
             reward += cfg.ma_safe_verify_bonus
-        if event.fault_catch:
+        if event.repaired if cfg.ma_fault_bonus_on_repair else event.fault_catch:
             reward += cfg.ma_fault_verify_bonus
         if event.informative_verify:
             if event.cue == 1:

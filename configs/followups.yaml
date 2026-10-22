@@ -1,6 +1,9 @@
-# Follow-up: does telling the agent how thinly its slack is spread (slack per
-# remaining step) close the residual length gap of the invariant encoder?
-name: ratio
+# Follow-ups to the main experiment, each targeting one failure mode found in the
+# analysis of the monitorability-aware agent with invariant observations (ma_inv):
+#   ratio   - residual length gap: add slack per remaining step to the observation
+#   memory  - repair/no-op aliasing: add a bit "an UNSAFE check was observed"
+#   repair  - detect-without-repair: pay the fault bonus on repair, not detection
+name: followups
 
 env:
   train_depth_range: [3, 6]
@@ -30,11 +33,17 @@ seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 methods:
   - name: ma_ratio
-    display_name: Monitorability (ratio)
+    display_name: "+ slack-per-step feature"
     env_overrides: {reward_scheme: monitorability_aware, observation: ratio}
-  - name: outcome_ratio
-    display_name: Outcome (ratio)
-    env_overrides: {reward_scheme: outcome_only, observation: ratio}
+  - name: ma_memory
+    display_name: "+ fault-located memory bit"
+    env_overrides: {reward_scheme: monitorability_aware, observation: memory}
+  - name: ma_repair
+    display_name: "fault bonus paid on repair"
+    env_overrides: {reward_scheme: monitorability_aware, observation: invariant, ma_fault_bonus_on_repair: true}
+  - name: ma_memory_repair
+    display_name: "memory bit + bonus on repair"
+    env_overrides: {reward_scheme: monitorability_aware, observation: memory, ma_fault_bonus_on_repair: true}
 
 evaluation:
   episodes: 500

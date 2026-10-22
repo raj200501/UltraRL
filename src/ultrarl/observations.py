@@ -21,6 +21,15 @@ differ in how position is represented:
     ``clip(slack / max(1, d - t), 0, 2) / 2``. This tells the agent how thinly its
     slack must be spread without revealing absolute length.
 
+``memory`` (10-d)
+    the invariant features plus a one-bit memory of whether an UNSAFE check has
+    been observed in this episode. Without it, a genuine repair (UNSAFE, REVISE,
+    THINK) and a no-op REVISE+THINK after a SAFE check produce identical
+    observations.
+
+``ratio`` reveals relative length (``d`` itself at ``t = 0``) and is therefore
+not length-invariant; it is a follow-up probe, not a length-invariant encoder.
+
 Budget slack ``b - (d - t)`` is the number of non-THINK actions the agent can
 still afford while finishing the chain.
 """
@@ -34,8 +43,8 @@ import numpy as np
 if TYPE_CHECKING:
     from ultrarl.env import Observable
 
-OBSERVATION_KINDS = ("absolute", "invariant", "ratio")
-_DIMS = {"absolute": 10, "invariant": 9, "ratio": 10}
+OBSERVATION_KINDS = ("absolute", "invariant", "ratio", "memory")
+_DIMS = {"absolute": 10, "invariant": 9, "ratio": 10, "memory": 10}
 SLACK_SCALE = 10.0
 GAP_CAP = 3
 
@@ -66,7 +75,7 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
             float(o.revised_recently),
             *_verify_one_hot(o),
         ]
-    elif kind in ("invariant", "ratio"):
+    elif kind in ("invariant", "ratio", "memory"):
         features = [
             float(o.step >= o.depth),
             float(o.step == 0),
@@ -78,6 +87,8 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
         ]
         if kind == "ratio":
             features.append(float(np.clip(slack / max(1, o.depth - o.step), 0.0, 2.0) / 2.0))
+        elif kind == "memory":
+            features.append(float(o.fault_located))
     else:
         raise ValueError(f"unknown observation kind {kind!r}; expected one of {OBSERVATION_KINDS}")
     return np.asarray(features, dtype=np.float32)

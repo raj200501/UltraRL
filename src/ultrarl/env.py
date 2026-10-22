@@ -86,6 +86,7 @@ class Observable:
     revised_recently: bool
     unchecked_gap: int
     step_checked: bool
+    fault_located: bool  # an UNSAFE check has been observed earlier in this episode
     budget_extra: int
     max_depth: int
 
@@ -99,6 +100,7 @@ class EpisodeStats:
     cost_spent: int = 0
     verify_count: int = 0
     revise_count: int = 0
+    repair_revise_count: int = 0  # REVISEs issued directly after an UNSAFE check
     verify_tp: int = 0
     # Cue-conditioned verification: decision points where VERIFY was available
     # and the current step had not yet been checked ("fresh" opportunities).
@@ -167,6 +169,7 @@ class ChainEnv:
         self.remaining_budget = self.max_budget
         self.checked: set[int] = set()
         self.fault_located = False
+        self.repaired = False
         self.detection_step: int | None = None
         self.last_verify = VerifyStatus.NONE
         self.last_action: Action | None = None
@@ -243,6 +246,7 @@ class ChainEnv:
             revised_recently=self.revised_recently,
             unchecked_gap=self.unchecked_gap,
             step_checked=self.step_idx in self.checked,
+            fault_located=self.fault_located,
             budget_extra=self.cfg.budget_extra,
             max_depth=self.cfg.max_depth,
         )
@@ -258,7 +262,6 @@ class ChainEnv:
         if not self.action_mask()[action]:
             raise ValueError(f"action {action.name} is not available in the current state")
 
-        self.action_mask_before_commit = self.action_mask()
         self._record_cue_selectivity(action)
         gap_before = self.unchecked_gap
         event = StepEvent(action=action.name, depth=self.depth, cost=self.action_cost(action))
@@ -273,7 +276,9 @@ class ChainEnv:
             self.done = True
             self.success = self.step_idx == self.depth and self.belief_valid
             self.incomplete_commit = self.step_idx < self.depth
-            self.voluntary_incomplete = self.incomplete_commit and bool(self.action_mask_before_commit[Action.THINK])
+            remaining_steps = self.depth - self.step_idx
+            could_finish = self.remaining_budget >= remaining_steps * self.cfg.think_cost
+            self.voluntary_incomplete = self.incomplete_commit and could_finish
             event.success = self.success
 
         self.remaining_budget -= event.cost
@@ -302,6 +307,9 @@ class ChainEnv:
         self.beliefs.append(apply_op(self.beliefs[-1], op))
         self.step_idx += 1
         event.think_valid = self.belief_valid
+        if t == self.fault_index and self.fault_located and not self.repaired and self.belief_valid:
+            self.repaired = True  # first correct re-execution of the located fault
+            event.repaired = True
 
     def _verify(self, event: StepEvent) -> None:
         t = self.step_idx
@@ -322,6 +330,7 @@ class ChainEnv:
 
     def _revise(self) -> None:
         self.stats.revise_count += 1
+        self.stats.repair_revise_count += int(self.last_verify == VerifyStatus.UNSAFE)
         self.step_idx -= 1
         self.beliefs.pop()
 
@@ -344,11 +353,13 @@ class ChainEnv:
             "num_actions": float(s.num_actions),
             "cost_spent": float(s.cost_spent),
             "cost_adjusted_accuracy": float(self.success) - self.cfg.cost_adjust_weight * s.cost_spent,
-            # committed before executing the whole chain (voluntarily = THINK was still affordable)
+            # committed before executing the whole chain (voluntarily = the budget could still finish it)
             "incomplete_commit": float(self.incomplete_commit),
             "voluntary_incomplete_commit": float(self.voluntary_incomplete),
             "verify_count": float(s.verify_count),
             "revise_count": float(s.revise_count),
+            # REVISEs that do not directly follow an UNSAFE check (no repair can result)
+            "nonrepair_revise_count": float(s.revise_count - s.repair_revise_count),
             "verify_tp": float(s.verify_tp),
             "depth": float(self.depth),
             "fault_present": float(fault),
@@ -356,6 +367,8 @@ class ChainEnv:
             "fault_detected": float(self.fault_located) if fault else nan,
             # P(success | fault present): requires detect -> revise -> redo
             "repair_success": float(self.success) if fault else nan,
+            # P(success | fault detected): does the agent finish the repair it started?
+            "success_given_detected": float(self.success) if self.fault_located else nan,
             "fresh_opps_cue0": float(s.fresh_opps[0]),
             "fresh_opps_cue1": float(s.fresh_opps[1]),
             "fresh_verifies_cue0": float(s.fresh_verifies[0]),
