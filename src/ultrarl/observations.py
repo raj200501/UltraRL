@@ -35,6 +35,13 @@ in whether, and how, they reveal position and chain length:
     THINK) and a no-op REVISE+THINK after a SAFE check produce identical
     observations.
 
+``pending`` (10-d)
+    the invariant features plus a bit that is set by an UNSAFE check and cleared
+    once the located step has been correctly re-executed. Without it, continuing
+    past a caught fault leads to the same observations as being on track; the
+    ``memory`` bit does not separate these either, because it stays set after a
+    repair. An agent that remembers its own checks and undos could compute it.
+
 Budget slack ``b - (d - t)`` is the number of non-THINK actions the agent can
 still afford while finishing the chain.
 """
@@ -48,8 +55,8 @@ import numpy as np
 if TYPE_CHECKING:
     from ultrarl.env import Observable
 
-OBSERVATION_KINDS = ("absolute", "absolute_nopos", "invariant", "ratio", "memory")
-_DIMS = {"absolute": 10, "absolute_nopos": 8, "invariant": 9, "ratio": 10, "memory": 10}
+OBSERVATION_KINDS = ("absolute", "absolute_nopos", "invariant", "ratio", "memory", "pending")
+_DIMS = {"absolute": 10, "absolute_nopos": 8, "invariant": 9, "ratio": 10, "memory": 10, "pending": 10}
 SLACK_SCALE = 10.0
 GAP_CAP = 3
 
@@ -78,7 +85,7 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
         rest = [o.unchecked_gap / max(1, o.max_depth), float(o.cue), float(o.revised_recently), *_verify_one_hot(o)]
         # "absolute" keeps the original study's feature order
         features = [position[0], budget[0], position[1], budget[1], *rest] if kind == "absolute" else [*budget, *rest]
-    elif kind in ("invariant", "ratio", "memory"):
+    elif kind in ("invariant", "ratio", "memory", "pending"):
         features = [
             float(o.step >= o.depth),
             float(o.step == 0),
@@ -92,6 +99,8 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
             features.append(float(np.clip(slack / max(1, o.depth - o.step), 0.0, 2.0) / 2.0))
         elif kind == "memory":
             features.append(float(o.fault_located))
+        elif kind == "pending":
+            features.append(float(o.repair_pending))
     else:
         raise ValueError(f"unknown observation kind {kind!r}; expected one of {OBSERVATION_KINDS}")
     return np.asarray(features, dtype=np.float32)

@@ -3,7 +3,7 @@ import pytest
 
 from ultrarl.config import EnvConfig, EvalSetting
 from ultrarl.env import ChainEnv
-from ultrarl.optimal import OptimalPlanner, fault_prior, initial_slack, optimal_success
+from ultrarl.optimal import OptimalPlanner, exhaustive_success, fault_prior, initial_slack, optimal_success
 from ultrarl.policies import heuristic_act
 from ultrarl.rollout import evaluate
 
@@ -50,3 +50,20 @@ def test_optimal_beats_the_heuristics():
     planned = optimal_success(cfg, setting.depth_range)
     for name in ("cue_triggered", "budget_aware_1", "verify_every_step"):
         assert evaluate(heuristic_act(name, 0), cfg, setting, 0, 2000)["success"] < planned
+
+
+TIGHT = [
+    EnvConfig(budget_extra=2),
+    EnvConfig(budget_extra=3, verify_cost=2),
+    EnvConfig(budget_extra=4, cue_hit_rate=0.6, cue_false_positive_rate=0.35),
+    EnvConfig(budget_extra=3, fault_profile="uniform"),
+]
+
+
+@pytest.mark.parametrize("cfg", TIGHT)
+@pytest.mark.parametrize("depth", [4, 5])
+def test_no_back_checking_restriction_does_not_bind_on_short_chains(cfg, depth):
+    # Exhaustive search over every history-dependent policy, including undoing to check earlier steps.
+    planned = OptimalPlanner(cfg, depth).value(0, initial_slack(cfg, depth))
+    assert exhaustive_success(cfg, depth) == pytest.approx(planned, abs=1e-12)
+    assert planned < 1.0

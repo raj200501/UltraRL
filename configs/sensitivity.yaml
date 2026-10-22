@@ -1,5 +1,5 @@
 # Do the encoder effect and the reward comparison survive other DQN settings?
-# (lr, target update) alternatives to the main configuration, 5 seeds each.
+# (lr, target update, training length) alternatives to the main configuration, 5 seeds each.
 # Outcome-only and naive agents use the invariant encoder; reward_scheme below
 # is the default for the monitorability-aware rows.
 name: sensitivity
@@ -44,6 +44,9 @@ methods:
   - {name: naive_inv_sync1000, display_name: "naive, inv, hard sync 1000", env_overrides: {observation: invariant, reward_scheme: naive_process}, train_overrides: {target_update_interval: 1000}}
   - {name: outcome_inv_polyak, display_name: "outcome, inv, Polyak $\\tau{=}0.005$", env_overrides: {observation: invariant, reward_scheme: outcome_only}, train_overrides: {target_tau: 0.005}}
   - {name: naive_inv_polyak, display_name: "naive, inv, Polyak $\\tau{=}0.005$", env_overrides: {observation: invariant, reward_scheme: naive_process}, train_overrides: {target_tau: 0.005}}
+  # twice the training (the exploration schedule scales with it): does outcome-only catch up?
+  - {name: outcome_inv_40k, display_name: "outcome, inv, 40k episodes", env_overrides: {observation: invariant, reward_scheme: outcome_only}, train_overrides: {episodes: 40000}}
+  - {name: ma_inv_40k, display_name: "inv, 40k episodes", env_overrides: {observation: invariant}, train_overrides: {episodes: 40000}}
 
 evaluation:
   episodes: 500

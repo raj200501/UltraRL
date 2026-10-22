@@ -167,7 +167,7 @@ def _method(raw: dict[str, Any]) -> Method:
     if kind == "heuristic":
         from ultrarl.policies import build_heuristic
 
-        build_heuristic(raw["name"], 0)  # raises for unknown heuristics
+        build_heuristic(raw["name"], 0, EnvConfig())  # raises for unknown heuristics
     return Method(
         name=raw["name"],
         display_name=raw.get("display_name", raw["name"]),

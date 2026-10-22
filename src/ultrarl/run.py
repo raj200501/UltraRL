@@ -210,28 +210,32 @@ def evaluate_all(exp: ExperimentConfig, config_path: str, smoke: bool, out: Path
     return summary
 
 
-def _check_output_dir(out: Path, config_path: str, smoke: bool, retrain: bool) -> None:
-    """Refuse to mix smoke and full outputs, then record the config the outputs belong to.
+def _provenance(config_path: str, smoke: bool) -> tuple[str, dict[str, Any]]:
+    text = Path(config_path).read_text(encoding="utf-8")
+    return text, {"config_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "smoke": smoke}
+
+
+def _check_output_dir(out: Path, config_path: str, smoke: bool) -> None:
+    """Refuse to mix smoke and full outputs in one directory (even with ``--retrain``).
 
     Every checkpoint is additionally checked against the config before it is
     skipped (training) or evaluated, so a changed config cannot silently reuse
-    stale agents. Provenance files are only written once these checks pass.
+    stale agents. Provenance is written by ``_record_provenance`` once the
+    stages have run.
     """
-    text = Path(config_path).read_text(encoding="utf-8")
-    info = {"config_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "smoke": smoke}
+    _, info = _provenance(config_path, smoke)
     info_path = out / "run_info.json"
-    if info_path.exists() and not retrain:
+    if info_path.exists():
         recorded = json.loads(info_path.read_text(encoding="utf-8"))
         if recorded.get("smoke") != smoke:
             kind = "smoke" if recorded.get("smoke") else "full"
-            raise RuntimeError(f"{out} holds {kind} outputs; use another --out (or --retrain)")
+            raise RuntimeError(f"{out} holds {kind} outputs; use another --out")
         if recorded.get("config_sha256") != info["config_sha256"]:
             print(f"[run] note: {config_path} differs from the config recorded in {out}", flush=True)
 
 
 def _record_provenance(out: Path, config_path: str, smoke: bool) -> None:
-    text = Path(config_path).read_text(encoding="utf-8")
-    info = {"config_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "smoke": smoke}
+    text, info = _provenance(config_path, smoke)
     target = out / "config.yaml"
     if not (target.exists() and target.resolve() == Path(config_path).resolve()):
         target.write_text(text, encoding="utf-8")
@@ -256,7 +260,7 @@ def main(argv: list[str] | None = None) -> None:
     exp = load_experiment(args.config, smoke=args.smoke)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    _check_output_dir(out, args.config, args.smoke, args.retrain)
+    _check_output_dir(out, args.config, args.smoke)
     start = time.time()
     if args.stage in ("train", "all"):
         train_all(exp, args.config, args.smoke, out, args.workers, args.retrain)

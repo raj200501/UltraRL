@@ -3,6 +3,8 @@
 #   ratio   - residual length gap: add slack per remaining step to the observation
 #   memory  - repair/no-op aliasing: add a bit "an UNSAFE check was observed"
 #   repair  - detect-without-repair: pay the fault bonus on repair, not detection
+#   pending - detect-without-repair: add a bit "a caught fault is not yet repaired",
+#             under all three rewards (tests the state-aliasing explanation)
 name: followups
 
 env:
@@ -44,6 +46,15 @@ methods:
   - name: ma_memory_repair
     display_name: "memory bit + bonus on repair"
     env_overrides: {reward_scheme: monitorability_aware, observation: memory, ma_fault_bonus_on_repair: true}
+  - name: ma_pending
+    display_name: "+ repair-pending bit"
+    env_overrides: {reward_scheme: monitorability_aware, observation: pending}
+  - name: outcome_pending
+    display_name: "outcome-only + repair-pending bit"
+    env_overrides: {reward_scheme: outcome_only, observation: pending}
+  - name: naive_pending
+    display_name: "naive process + repair-pending bit"
+    env_overrides: {reward_scheme: naive_process, observation: pending}
 
 evaluation:
   episodes: 500

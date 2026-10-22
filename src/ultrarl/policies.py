@@ -80,7 +80,9 @@ def build_heuristic(name: str, seed: int, env_config: EnvConfig | None = None) -
     if name == "random":
         return RandomPolicy(seed)
     if name == "optimal":
-        return optimal_policy(env_config or EnvConfig())
+        if env_config is None:
+            raise ValueError("the 'optimal' planner needs the environment config it will be evaluated under")
+        return optimal_policy(env_config)
     table: dict[str, Policy] = {
         "always_think": always_think,
         "verify_every_step": verify_every_step,

@@ -23,28 +23,31 @@ left beyond what finishing the chain needs):
 where the probabilities are conditional on steps 0..k-1 being clean and ``c`` is
 step k's cue. A caught fault is repaired by undoing and redoing the step, after
 which the rest of the chain is clean.
+
+:func:`exhaustive_success` checks the restriction: it searches over every
+history-dependent policy, including ones that undo steps to check earlier
+ones, by enumerating the hidden (fault, cues) configurations. It is exponential
+in the depth and only meant for short chains (tests use depth <= 4;
+``scripts/check_planner.py`` goes further).
 """
 
 from __future__ import annotations
 
-from functools import lru_cache
+import itertools
+from functools import cache, lru_cache
 
 import numpy as np
 
 from ultrarl.config import EnvConfig
-from ultrarl.env import Action, Observable, VerifyStatus
+from ultrarl.env import Action, Observable, VerifyStatus, fault_position_probabilities
 
 
 def fault_prior(cfg: EnvConfig, depth: int) -> np.ndarray:
     """P(fault at position i) for i < depth; the remaining mass is 'no fault'."""
-    if cfg.fault_profile == "uniform":
-        weights = np.ones(depth)
-    else:  # "middle", as in ChainEnv._sample_fault_index
-        positions = np.arange(depth, dtype=float)
-        centre = (depth - 1) / 2.0
-        weights = 1.0 + cfg.fault_peak_weight * (1.0 - np.abs(positions - centre) / max(1.0, centre))
-        weights = np.clip(weights, 0.1, None)
-    return cfg.p_fault * weights / weights.sum()
+    return cfg.p_fault * fault_position_probabilities(cfg, depth)
+
+
+TIE_TOLERANCE = 1e-12
 
 
 class OptimalPlanner:
@@ -77,9 +80,12 @@ class OptimalPlanner:
         return sum(max(self._options(k, s, cue)) for cue in (0, 1))
 
     def should_check(self, executed: int, slack: int, cue: int) -> bool:
-        """Check the step just executed (``executed`` steps done) with this cue?"""
+        """Check the step just executed (``executed`` steps done) with this cue?
+
+        Ties (both choices optimal) go to skipping, with a tolerance so that the
+        choice does not depend on floating-point rounding."""
         skip, check = self._options(executed - 1, slack, cue)
-        return check > skip
+        return check > skip + TIE_TOLERANCE
 
 
 def initial_slack(cfg: EnvConfig, depth: int) -> int:
@@ -100,7 +106,9 @@ def optimal_policy(cfg: EnvConfig):
         if o.last_verify == VerifyStatus.UNSAFE and mask[Action.REVISE]:
             return Action.REVISE
         if o.step > 0 and not o.step_checked and not o.fault_located and mask[Action.VERIFY]:
-            planner = planners.setdefault(o.depth, OptimalPlanner(cfg, o.depth))
+            if o.depth not in planners:
+                planners[o.depth] = OptimalPlanner(cfg, o.depth)
+            planner = planners[o.depth]
             slack = o.remaining_budget - (o.depth - o.step) * o.think_cost
             if planner.should_check(o.step, slack, o.cue):
                 return Action.VERIFY
@@ -109,3 +117,47 @@ def optimal_policy(cfg: EnvConfig):
         return Action.COMMIT
 
     return policy
+
+
+def exhaustive_success(cfg: EnvConfig, depth: int) -> float:
+    """Best success over all history-dependent policies (exhaustive; short chains only).
+
+    An information state is the set of hidden configurations (fault position or
+    none, and the cue of every step) consistent with what the agent has seen,
+    each with a flag for whether its running value is currently wrong.
+    """
+    prior = fault_prior(cfg, depth)
+    configs = []
+    for fault in [None, *range(depth)]:
+        p_fault = 1.0 - cfg.p_fault if fault is None else prior[fault]
+        for cues in itertools.product((0, 1), repeat=depth):
+            p = p_fault
+            for i, cue in enumerate(cues):
+                rate = cfg.cue_hit_rate if i == fault else cfg.cue_false_positive_rate
+                p *= rate if cue else 1.0 - rate
+            configs.append((p, fault, cues))
+
+    @cache
+    def value(step: int, budget: int, located: bool, checked: frozenset, group: frozenset) -> float:
+        best = sum(configs[c][0] for c, wrong in group if step == depth and not wrong)  # COMMIT
+        if step < depth and budget >= cfg.think_cost:  # THINK, then observe the new step's cue
+            by_cue: dict[int, set] = {}
+            for c, wrong in group:
+                fault, cues = configs[c][1], configs[c][2]
+                by_cue.setdefault(cues[step], set()).add((c, wrong or (step == fault and not located)))
+            after = budget - cfg.think_cost
+            best = max(best, sum(value(step + 1, after, located, checked, frozenset(g)) for g in by_cue.values()))
+        if step > 0 and budget >= cfg.verify_cost and step not in checked:  # VERIFY the last step
+            by_result: dict[bool, set] = {}
+            for c, wrong in group:
+                by_result.setdefault(step - 1 == configs[c][1] and wrong, set()).add((c, wrong))
+            after, seen = budget - cfg.verify_cost, checked | {step}
+            outcomes = [value(step, after, located or unsafe, seen, frozenset(g)) for unsafe, g in by_result.items()]
+            best = max(best, sum(outcomes))
+        if step > 0 and budget >= cfg.revise_cost:  # REVISE: undoing the faulty step clears the error
+            undone = frozenset((c, wrong and step - 1 > configs[c][1]) for c, wrong in group)
+            best = max(best, value(step - 1, budget - cfg.revise_cost, located, checked, undone))
+        return best
+
+    start = frozenset((i, False) for i in range(len(configs)))
+    return value(0, depth + cfg.budget_extra, False, frozenset(), start)

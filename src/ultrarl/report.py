@@ -98,7 +98,7 @@ def fig_length_generalization(summary: pd.DataFrame, out: Path) -> None:
             linewidth=1.6, capsize=2, label=label(method),
         )  # fmt: skip
     references = (
-        ("optimal", "Optimal planner (knows length)"),
+        ("optimal", "Exact planner (knows length, no back-checking)"),
         ("cue_triggered", "Cue-triggered heuristic"),
         ("budget_aware_1", "Budget-aware heuristic"),
     )
@@ -227,7 +227,7 @@ def fmt(r: pd.Series, metric: str, digits: int = 2) -> str:
     v, lo, hi = r[metric], r[f"{metric}_lo"], r[f"{metric}_hi"]
     if np.isnan(v):
         return "--"
-    return f"{v:.{digits}f}\\,{{\\scriptsize[{lo:.{digits}f}, {hi:.{digits}f}]}}"
+    return f"{v:.{digits}f}\\,{{\\scriptsize[{_number(lo, digits, True)}, {_number(hi, digits, True)}]}}"
 
 
 def latex_table(header: list[str], rows: list[list[str]], align: str) -> str:
@@ -353,10 +353,33 @@ def curve_stats(
             out[f"{prefix}/{method}/{key[name]}/hi"] = min(1.0, high)
         jumps = sub.sort_values("episode").groupby("seed").train_like_success.apply(lambda x: x.diff().abs().mean())
         out[f"{prefix}/{method}/mean_abs_change"] = float(jumps.mean())
-        peaks = curves[curves.method == method].groupby("seed").train_like_success.max()
+        everything = curves[curves.method == method]
+        peaks = everything.groupby("seed").train_like_success.max()
         out[f"{prefix}/{method}/seeds_peak_above_half"] = str(int((peaks > 0.5).sum()))
+        # Acquisition and retention: when a seed first exceeds 0.5, and how often it collapses afterwards.
+        first = everything[everything.train_like_success > 0.5].groupby("seed").episode.min()
+        out[f"{prefix}/{method}/first_above_half_median"] = f"{first.median():,.0f}" if len(first) else "--"
+        after = [
+            float((s.train_like_success[s.episode > first[seed]] <= COLLAPSE_THRESHOLD).mean())
+            for seed, s in everything.groupby("seed")
+            if seed in first.index and (s.episode > first[seed]).any()
+        ]
+        if after:
+            low, high = t_interval(np.array(after))
+            out[f"{prefix}/{method}/collapse_after_first_rate"] = float(np.mean(after))
+            out[f"{prefix}/{method}/collapse_after_first_rate/lo"] = max(0.0, low)
+            out[f"{prefix}/{method}/collapse_after_first_rate/hi"] = min(1.0, high)
         selected = per_seed[(per_seed.method == method) & (per_seed.setting == "train_like")].success
         out[f"{prefix}/{method}/seeds_selected_above_half"] = str(int((selected > 0.5).sum()))
+    return out
+
+
+def selection_macros(train_runs: pd.DataFrame, prefix: str) -> dict[str, str]:
+    """When the selected checkpoints come from: median episode, and how many are within the burn-in."""
+    out: dict[str, str] = {}
+    for method, sub in train_runs.groupby("method"):
+        out[f"{prefix}/{method}/selected_episode_median"] = f"{sub.selected_episode.median():,.0f}"
+        out[f"{prefix}/{method}/selected_early"] = str(int((sub.selected_episode <= BURN_IN).sum()))
     return out
 
 
@@ -477,7 +500,9 @@ def table_followups(
     success, how often late checkpoints collapse, and wasted REVISEs on long chains."""
     combined = pd.concat([main_summary, summary], ignore_index=True)
     rows = []
-    variants = [FOLLOWUP_REFERENCE] + [m for m in summary.method.drop_duplicates() if not m.endswith(FINAL)]
+    variants = [FOLLOWUP_REFERENCE] + [
+        m for m in summary.method.drop_duplicates() if not m.endswith(FINAL) and m.startswith("ma_")
+    ]
     for m in variants:
         prefix = "main" if m == FOLLOWUP_REFERENCE else "followups"
         rows.append(
@@ -501,6 +526,30 @@ def table_followups(
         "Wasted REVISE",
     ]
     (out / "followup_results.tex").write_text(latex_table(header, rows, "lcccccc"), encoding="utf-8")
+
+
+def table_pending(main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict[str, float | str], out: Path) -> None:
+    """Each reward with and without the repair-pending bit (invariant observations otherwise)."""
+    combined = pd.concat([main_summary, summary], ignore_index=True)
+    rows = []
+    for scheme in SCHEMES:
+        for obs, prefix in (("inv", "main"), ("pending", "followups")):
+            m = f"{scheme}_{obs}"
+            pct = [f"{100 * stats[f'{prefix}/{m}/{k}']:.0f}\\%" for k in ("collapse_rate", "collapse_norepair_rate",
+                                                                          "collapse_nevercheck_rate")]  # fmt: skip
+            rows.append(
+                [
+                    SCHEME_LABEL[scheme] + (" + pending bit" if obs == "pending" else ""),
+                    *pct,
+                    fmt(row(combined, "train_like", m), "success"),
+                    fmt(row(combined, "heldout_long", m), "success"),
+                    fmt(row(combined, "heldout_xlong", m), "success"),
+                    fmt(row(combined, "heldout_long", m + FINAL), "success"),
+                ]
+            )
+    header = ["Reward", "Collapsed", "no repair", "never check", "Success 3--6", "Success 7--9", "Success 10--14",
+              "Last ckpt.\\ 7--9"]  # fmt: skip
+    (out / "pending_results.tex").write_text(latex_table(header, rows, "lccccccc"), encoding="utf-8")
 
 
 def table_encoders(
@@ -541,7 +590,8 @@ def table_pilot(pilot: Path, out: Path) -> None:
 
 
 LEARNER_SETTINGS = [("", "default (main experiment)"), ("lr3e-4", "lr $3{\\cdot}10^{-4}$"),
-                    ("sync1000", "hard sync 1000"), ("polyak", "Polyak $\\tau{=}0.005$")]  # fmt: skip
+                    ("sync1000", "hard sync 1000"), ("polyak", "Polyak $\\tau{=}0.005$"),
+                    ("40k", "40k episodes")]  # fmt: skip
 SCHEMES = ("outcome", "naive", "ma")
 
 
@@ -554,28 +604,93 @@ def table_sensitivity_rewards(
     for tag, text in LEARNER_SETTINGS:
         source, prefix = (main_summary, "main") if not tag else (summary, "sensitivity")
         names = [f"{s}_inv" + (f"_{tag}" if tag else "") for s in SCHEMES]
-        collapse = [f"{100 * stats[f'{prefix}/{m}/collapse_rate']:.0f}\\%" for m in names]
-        success = [fmt(row(source, "heldout_long", m), "success") for m in names]
+        if not any(m in set(source.method) for m in names):
+            continue
+        collapse = [
+            f"{100 * stats[f'{prefix}/{m}/collapse_rate']:.0f}\\%" if f"{prefix}/{m}/collapse_rate" in stats else "--"
+            for m in names
+        ]
+        success = [fmt(row(source, "heldout_long", m), "success") if m in set(source.method) else "--" for m in names]
         rows.append([text, *collapse, *success])
     header = ["Learner", "Collapsed: outcome", "naive", "MA", "Success 7--9: outcome", "naive", "MA"]
     (out / "sensitivity_rewards.tex").write_text(latex_table(header, rows, "lcccccc"), encoding="utf-8")
 
 
 PROBE_METRICS = (
-    "think_rate", "q_think", "q_revise", "return_think", "return_revise", "q_gap", "true_gap", "aliased_rate",
+    "think_rate", "q_think", "q_revise", "return_think", "return_revise", "q_on_track", "return_on_track",
+    "aliased_rate",
 )  # fmt: skip
+PROBE_DERIVED = ("q_gap", "true_gap", "track_bias", "think_bias", "revise_bias")
+
+
+def with_probe_derived(probe: pd.DataFrame) -> pd.DataFrame:
+    """Learned and true gaps between the two actions, and each value's error relative to the
+    checkpoint's error on on-track decision points (its general offset)."""
+    track_bias = probe.q_on_track - probe.return_on_track
+    return probe.assign(
+        q_gap=probe.q_revise - probe.q_think,
+        true_gap=probe.return_revise - probe.return_think,
+        track_bias=track_bias,
+        think_bias=probe.q_think - probe.return_think - track_bias,
+        revise_bias=probe.q_revise - probe.return_revise - track_bias,
+    )
 
 
 def probe_macros(probe: pd.DataFrame) -> dict[str, float | str]:
     """Mean over seeds (and t-interval) of the post-UNSAFE value probe (scripts/q_probe.py)."""
     out: dict[str, float | str] = {}
-    for (method, which), sub in probe.groupby(["method", "checkpoint"]):
+    for (method, which), sub in with_probe_derived(probe).groupby(["method", "checkpoint"]):
         name = method + ("" if which == "best" else FINAL)
-        for metric in PROBE_METRICS:
+        for metric in PROBE_METRICS + PROBE_DERIVED:
             low, high = t_interval(sub[metric].to_numpy(dtype=float))
             out.update({f"probe/{name}/{metric}": float(sub[metric].mean()), f"probe/{name}/{metric}/lo": low,
                         f"probe/{name}/{metric}/hi": high})  # fmt: skip
     return out
+
+
+PROBE_ROWS = [
+    ("main", "outcome_inv", "Outcome-only"),
+    ("main", "naive_inv", "Naive process"),
+    ("main", "ma_inv", "Monitorability-aware (MA)"),
+    ("followups", "ma_memory", "MA + memory bit"),
+    ("followups", "ma_repair", "MA, bonus paid on repair"),
+    ("followups", "ma_memory_repair", "MA + memory bit, bonus on repair"),
+    ("followups", "outcome_pending", "Outcome-only + pending bit"),
+    ("followups", "naive_pending", "Naive process + pending bit"),
+    ("followups", "ma_pending", "MA + pending bit"),
+]
+
+
+def _pair(a: float, b: float, signed: bool = False) -> str:
+    def text(x: float) -> str:
+        return ("+" if signed and x >= 0.005 else "") + _number(x, 2)
+
+    return f"{text(a)} / {text(b)}"
+
+
+def table_probe(
+    probe: pd.DataFrame, summaries: dict[str, pd.DataFrame], stats: dict[str, float | str], out: Path
+) -> None:
+    """Post-UNSAFE value probe of the selected checkpoints, next to how often late checkpoints
+    detect faults without repairing them."""
+    means = with_probe_derived(probe).groupby(["method", "checkpoint"]).mean(numeric_only=True)
+    rows = []
+    for experiment, m, text in PROBE_ROWS:
+        if (m, "best") not in means.index:
+            continue
+        best, final = means.loc[(m, "best")], means.loc[(m, "final")]
+        rows.append([
+            text,
+            f"{100 * stats[f'{experiment}/{m}/collapse_norepair_rate']:.0f}\\%",
+            f"{100 * best.think_rate:.0f}\\% / {100 * final.think_rate:.0f}\\%",
+            _pair(best.q_revise, best.q_think),
+            _pair(best.return_revise, best.return_think),
+            _pair(best.q_on_track, best.return_on_track),
+            _pair(best.revise_bias, best.think_bias, signed=True),
+        ])  # fmt: skip
+    header = ["Agent", "Detect, no repair", "THINK after \\textsc{unsafe} (sel.\\ / last)", "Learned R / T",
+              "True R / T", "On track: learned / true", "Excess error R / T"]  # fmt: skip
+    (out / "probe_results.tex").write_text(latex_table(header, rows, "lcccccc"), encoding="utf-8")
 
 
 def success_range(summary: pd.DataFrame, key: str, pairs: list[tuple[str, str]]) -> dict[str, str]:
@@ -599,18 +714,20 @@ MACRO_HEADER = r"""% Generated by `python -m ultrarl.report`; do not edit by han
 """
 
 
-def _number(value: float, digits: int) -> str:
-    """Rounded value with a real minus sign, and no "-0.00"."""
+def _number(value: float, digits: int, keep_sign: bool = False) -> str:
+    """Rounded value with a real minus sign. A mean that rounds to -0.00 prints as 0.00; an
+    interval bound keeps its sign (``keep_sign``) so a bound just below zero stays visible."""
     if np.isnan(value):
         return "--"
     text = f"{value:.{digits}f}"
     if text.startswith("-"):
-        text = text[1:] if float(text) == 0.0 else "\\ensuremath{-}" + text[1:]
+        text = text[1:] if float(text) == 0.0 and not keep_sign else "\\ensuremath{-}" + text[1:]
     return text
 
 
 def _macro(key: str, value: float, digits: int = 2) -> str:
-    return f"\\expandafter\\def\\csname ur@{key}\\endcsname{{{_number(value, digits)}}}"
+    text = _number(value, digits, keep_sign=key.endswith(("/lo", "/hi")))
+    return f"\\expandafter\\def\\csname ur@{key}\\endcsname{{{text}}}"
 
 
 def _pct_macro(key: str, value: float) -> str:
@@ -702,21 +819,27 @@ def main(argv: list[str] | None = None) -> None:
         sensitivity_seeds = pd.read_csv(results / "sensitivity" / "eval_per_seed.csv")
         tags = sorted({m.removeprefix("ma_inv_") for m in summaries["sensitivity"].method if m.startswith("ma_inv_")})
         tags = [t for t in tags if not t.endswith(FINAL)]
-        pairs = [(f"ma_inv_{t}", f"ma_abs_{t}", s) for t in tags for s in ("heldout_long", "heldout_xlong")]
         methods = set(summaries["sensitivity"].method)
+        pairs = [
+            (f"ma_inv_{t}", f"ma_abs_{t}", s)
+            for t in tags
+            if f"ma_abs_{t}" in methods
+            for s in ("heldout_long", "heldout_xlong")
+        ]
         for t in tags:
             for a, b in (("ma", "outcome"), ("ma", "naive"), ("naive", "outcome")):
                 if {f"{a}_inv_{t}", f"{b}_inv_{t}"} <= methods:
                     pairs += [(f"{a}_inv_{t}", f"{b}_inv_{t}", s) for s in LENGTHS]
         extras.update(comparison_macros(key_numbers(sensitivity_seeds, pairs), prefix="sens"))
         extras.update(curve_stats(load_curves(results / "sensitivity"), sensitivity_seeds, prefix="sensitivity"))
-        if {f"{s}_inv_{t}" for s in SCHEMES for t in tags} <= methods:
+        if {f"{s}_inv_{t}" for s in SCHEMES for t in ("lr3e-4", "sync1000", "polyak")} <= methods:
             table_sensitivity_rewards(summary, summaries["sensitivity"], extras, tables)
     if (results / "pilot").exists():
         table_pilot(results / "pilot", tables)
     probe_path = results / "q_probe.csv"
     if probe_path.exists():
-        extras.update(probe_macros(pd.read_csv(probe_path)))
+        probe = pd.read_csv(probe_path)
+        extras.update(probe_macros(probe))
     coverage_path = results / "observation_coverage.csv"
     if coverage_path.exists():
         for _, c in pd.read_csv(coverage_path).iterrows():
@@ -733,7 +856,15 @@ def main(argv: list[str] | None = None) -> None:
         extras.update(comparison_macros(key_numbers(joint, pairs)))
         followup_seeds = pd.read_csv(followup_dir / "eval_per_seed.csv")
         extras.update(curve_stats(load_curves(followup_dir), followup_seeds, prefix="followups"))
+        pending = [m for m in followup_methods if m.endswith("_pending")]
+        pairs = [(m, m.replace("_pending", "_inv"), s) for m in pending for s in lengths]
+        pairs += [(m + FINAL, m.replace("_pending", "_inv") + FINAL, s) for m in pending for s in lengths]
+        if {"ma_pending", "outcome_pending"} <= set(pending):
+            pairs += [(f"ma_pending{x}", f"outcome_pending{x}", s) for x in ("", FINAL) for s in lengths]
+        extras.update(comparison_macros(key_numbers(joint, pairs)))
         table_followups(summary, summaries["followups"], extras, tables)
+        if {f"{s}_pending" for s in SCHEMES} <= set(followup_methods):
+            table_pending(summary, summaries["followups"], extras, tables)
     encoder_dir = results / "encoders"
     if (encoder_dir / "eval_summary.csv").exists():
         summaries["encoders"] = pd.read_csv(encoder_dir / "eval_summary.csv")
@@ -743,6 +874,12 @@ def main(argv: list[str] | None = None) -> None:
         extras.update(comparison_macros(key_numbers(joint, pairs)))
         if "coverage/absolute_nopos/heldout_xlong/unseen_rate" in extras:
             table_encoders(summary, summaries["encoders"], extras, tables)
+    if probe_path.exists() and "followups" in summaries:
+        table_probe(probe, summaries, extras, tables)
+    for name in summaries:
+        runs = results / name / "train_runs.csv"
+        if runs.exists():
+            extras.update(selection_macros(pd.read_csv(runs), name))
     write_macros(paper / "numbers.tex", summaries, extras)
     print(f"[report] wrote figures to {figures}, tables to {tables} and {paper / 'numbers.tex'}")
 

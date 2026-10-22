@@ -3,13 +3,21 @@
     python scripts/q_probe.py   # writes results/q_probe.csv
 
 Each checkpoint is rolled out greedily on training-length evaluation episodes.
-At every decision point where the last check reported UNSAFE and REVISE is
-available, we record the greedy action, the learned gap Q(REVISE) - Q(THINK),
-and the true gap under the same policy: the discounted return of REVISE minus
-that of THINK, each followed by greedy play from a copy of the environment
-(episodes are deterministic once reset, so this is exact). It also records
-how often an observation on the THINK branch, where the running value is wrong,
-also occurs at a decision point of the same checkpoint where it is right.
+
+* At every decision point where the last check reported UNSAFE and both REVISE
+  and THINK are available, we record the greedy action, the learned values
+  Q(REVISE) and Q(THINK), and their true discounted returns under the same
+  greedy policy, obtained by playing each action out from a copy of the
+  environment (episodes are deterministic once reset, so this is exact).
+* As a calibration baseline, at every other decision point where the running
+  value is correct and no caught fault is waiting to be repaired ("on track"),
+  we record the learned value of the greedy action and the discounted return
+  that actually followed.
+* We also record how often an observation on the THINK branch, while the running
+  value is still wrong, also occurs on track in the same checkpoint's rollouts.
+
+Every statistic is a mean over decision points within a checkpoint; the report
+averages it over seeds.
 """
 
 import copy
@@ -26,7 +34,10 @@ from ultrarl.rollout import EVAL_STREAM, episode_seed
 from ultrarl.train import checkpoint_path
 
 ROOT = Path(__file__).resolve().parents[1]
-METHODS = {"main": ["outcome_inv", "naive_inv", "ma_inv"], "followups": ["ma_memory", "ma_repair", "ma_memory_repair"]}
+METHODS = {
+    "main": ["outcome_inv", "naive_inv", "ma_inv"],
+    "followups": ["ma_memory", "ma_repair", "ma_memory_repair", "outcome_pending", "naive_pending", "ma_pending"],
+}
 SETTING = "train_like"
 EPISODES = 500
 
@@ -39,7 +50,7 @@ def greedy_return(agent: DQNAgent, env: ChainEnv, first_action: int, gamma: floa
     obs, reward, done, _ = env.step(first_action)
     total, discount = reward, gamma
     while not done:
-        if seen is not None:
+        if seen is not None and not env.belief_valid:
             seen.append(key(obs))
         obs, reward, done, _ = env.step(agent.act(obs, env.action_mask()))
         total += discount * reward
@@ -47,39 +58,54 @@ def greedy_return(agent: DQNAgent, env: ChainEnv, first_action: int, gamma: floa
     return total
 
 
+def discounted_suffix_sums(rewards: list[float], gamma: float) -> np.ndarray:
+    out, running = np.zeros(len(rewards)), 0.0
+    for i in range(len(rewards) - 1, -1, -1):
+        running = rewards[i] + gamma * running
+        out[i] = running
+    return out
+
+
 def probe(agent: DQNAgent, env: ChainEnv, seed: int, depth_range: tuple[int, int], gamma: float) -> dict[str, float]:
     q_think, q_revise, g_think, g_revise, think = [], [], [], [], []
+    q_track, g_track = [], []
     on_track, past_fault = set(), []
     for i in range(EPISODES):
         obs = env.reset(seed=episode_seed(EVAL_STREAM, seed, i, SETTING), depth_range=depth_range)
-        done = False
+        done, rewards, track_points = False, [], []
         while not done:
             mask = env.action_mask()
-            if env.belief_valid:
+            q = agent.q_values(obs)
+            pending = env.fault_located and not env.repaired
+            if env.belief_valid and not pending:
                 on_track.add(key(obs))
+                track_points.append((len(rewards), float(np.max(np.where(mask, q, -np.inf)))))
             if env.observable().last_verify == VerifyStatus.UNSAFE and mask[Action.REVISE] and mask[Action.THINK]:
-                q = agent.q_values(obs)
                 q_think.append(q[Action.THINK])
                 q_revise.append(q[Action.REVISE])
                 g_think.append(greedy_return(agent, copy.deepcopy(env), Action.THINK, gamma, past_fault))
                 g_revise.append(greedy_return(agent, copy.deepcopy(env), Action.REVISE, gamma))
                 think.append(agent.act(obs, mask) == Action.THINK)
-            obs, _, done, _ = env.step(agent.act(obs, mask))
-    if not think:
-        return {"unsafe_points": 0}
-    q_think, q_revise, g_think, g_revise = map(np.array, (q_think, q_revise, g_think, g_revise))
-    return {
-        "unsafe_points": len(think),
-        "think_rate": float(np.mean(think)),
-        "q_think": float(np.mean(q_think)),
-        "q_revise": float(np.mean(q_revise)),
-        "return_think": float(np.mean(g_think)),
-        "return_revise": float(np.mean(g_revise)),
-        # medians: a few far-off states (e.g. at the budget limit) dominate the mean
-        "q_gap": float(np.median(q_revise - q_think)),
-        "true_gap": float(np.median(g_revise - g_think)),
-        "aliased_rate": float(np.mean([k in on_track for k in past_fault])),
-    }
+            obs, reward, done, _ = env.step(agent.act(obs, mask))
+            rewards.append(reward)
+        returns = discounted_suffix_sums(rewards, gamma)
+        for t, value in track_points:
+            q_track.append(value)
+            g_track.append(returns[t])
+    stats = {"unsafe_points": len(think)}
+    stats.update(q_on_track=float(np.mean(q_track)), return_on_track=float(np.mean(g_track)))
+    if think:
+        stats.update(
+            {
+                "think_rate": float(np.mean(think)),
+                "q_think": float(np.mean(q_think)),
+                "q_revise": float(np.mean(q_revise)),
+                "return_think": float(np.mean(g_think)),
+                "return_revise": float(np.mean(g_revise)),
+                "aliased_rate": float(np.mean([k in on_track for k in past_fault])) if past_fault else float("nan"),
+            }
+        )
+    return stats
 
 
 def main() -> None:
@@ -93,7 +119,7 @@ def main() -> None:
             for seed in exp.seeds:
                 for which in ("best", "final"):
                     agent, _ = DQNAgent.load(checkpoint_path(ROOT / "results" / experiment, method, seed, which))
-                    stats = probe(agent, env, seed, setting.depth_range, exp.train.gamma)
+                    stats = probe(agent, env, seed, setting.depth_range, exp.method_train(method).gamma)
                     ids = {"experiment": experiment, "method": method.name, "checkpoint": which, "seed": seed}
                     rows.append({**ids, **stats})
     out = ROOT / "results" / "q_probe.csv"

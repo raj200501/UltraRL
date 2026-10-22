@@ -3,12 +3,12 @@ import pytest
 
 from ultrarl.config import EnvConfig
 from ultrarl.env import Action, ChainEnv
-from ultrarl.observations import observation_dim
+from ultrarl.observations import OBSERVATION_KINDS, observation_dim
 
-T, V = Action.THINK, Action.VERIFY
+T, V, R = Action.THINK, Action.VERIFY, Action.REVISE
 
 
-@pytest.mark.parametrize("kind", ["absolute", "invariant", "ratio"])
+@pytest.mark.parametrize("kind", OBSERVATION_KINDS)
 def test_observation_shape_and_dtype(kind):
     env = ChainEnv(EnvConfig(observation=kind))
     obs = env.reset(seed=0)
@@ -48,3 +48,18 @@ def test_ratio_feature_is_slack_per_remaining_step():
     env = ChainEnv(EnvConfig(observation="ratio", budget_extra=6))
     obs = env.reset(seed=0, depth_range=(4, 4))
     assert obs[-1] == pytest.approx(min(6 / 4, 2.0) / 2.0)
+
+
+def test_memory_and_pending_bits_after_a_caught_fault():
+    def bits(actions):
+        env = ChainEnv(EnvConfig(observation="memory"))
+        env.reset(seed=0, depth_range=(5, 5), fault_index=1)
+        for a in actions:
+            env.step(a)
+        o = env.observable()
+        return o.fault_located, o.repair_pending
+
+    assert bits([T, T]) == (False, False)  # fault executed but not caught
+    assert bits([T, T, V]) == (True, True)  # caught
+    assert bits([T, T, V, T]) == (True, True)  # continuing past it: still pending
+    assert bits([T, T, V, R, T]) == (True, False)  # repaired: memory stays set, pending clears

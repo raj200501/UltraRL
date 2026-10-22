@@ -38,6 +38,10 @@ def _fake_experiment(root: Path, name: str, rng: np.random.Generator, seeds=(0, 
         out / "eval_summary.csv", index=False
     )
     episodes = np.arange(1000, 21000, 1000)
+    pd.DataFrame(
+        [{"method": m.name, "seed": seed, "selected_episode": int(rng.choice(episodes))} for m in exp.learned_methods
+         for seed in seeds]
+    ).to_csv(out / "train_runs.csv", index=False)  # fmt: skip
     for m in exp.learned_methods:
         for seed in seeds:
             pd.DataFrame(
@@ -98,6 +102,8 @@ def test_report_writes_every_figure_and_table(generated):
         "sensitivity_results",
         "sensitivity_rewards",
         "pilot_results",
+        "probe_results",
+        "pending_results",
         "followup_results",
         "encoder_results",
     ):
@@ -124,16 +130,25 @@ def test_report_macros_are_well_formed_and_cover_every_experiment(generated):
         "coverage/absolute_nopos/heldout_xlong/unseen_rate/pct",
         "probe/ma_inv@final/think_rate/pct",
         "probe/ma_repair/q_gap/lo",
+        "probe/ma_inv/think_bias",
+        "diff/ma_pending@final-ma_inv@final/heldout_long/success",
+        "diff/outcome_pending-outcome_inv/train_like/success/p",
         "main/optimal/lengths/max/pct",
         "ablations/check_paying@final/train_like/min",
         "diff/no_cue_terms-outcome_inv/heldout_xlong/success/p",
         "abl/ma_inv@final-no_waste_penalty@final/heldout_long/success",
         "sens/ma_inv_polyak-outcome_inv_polyak/heldout_long/success",
         "sensitivity/naive_inv_sync1000/collapse_rate/pct",
+        "sensitivity/outcome_inv_40k/collapse_rate/pct",
+        "main/outcome_inv/first_above_half_median",
+        "main/ma_inv/collapse_after_first_rate/pct",
+        "followups/ma_repair/selected_episode_median",
+        "followups/naive_pending/collapse_norepair_rate/pct",
+        "diff/ma_pending@final-outcome_pending@final/heldout_long/success/p",
     ):
         assert key in keys, key
     for _, value in defs:
-        assert value == "--" or re.fullmatch(r"(\\ensuremath\{-\})?[0-9.]+(\\%)?|<0\.001", value), value
+        assert value == "--" or re.fullmatch(r"(\\ensuremath\{-\})?[0-9.,]+(\\%)?|<0\.001", value), value
 
 
 def test_curve_stats_separates_never_check_from_detect_without_repair():

@@ -16,7 +16,7 @@ The environment was rewritten for this version. \texttt{make equivalence} (\text
 \section{Hyperparameters and Compute}
 \label{app:hparams}
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \setlength{\tabcolsep}{4pt}
@@ -45,12 +45,12 @@ Evaluation & 500 episodes per seed and setting \\
 \end{tabular}
 \end{table}
 
-A training run takes about four minutes on one CPU core. The main experiment (60 runs), the ablations (80 runs; the full-reward condition is shared with the main experiment), the sensitivity study (60 runs), the follow-ups (40 runs) and the encoder control (10 runs) are 250 distinct runs, about four and a half hours on a 4-core machine. No GPU is used. Training is deterministic on CPU given a seed; \texttt{make reproduce} retrains everything into a fresh directory (260 runs, since the shared condition is retrained there) and checks every checkpoint bitwise against the saved ones. Bitwise reproduction requires the pinned versions in \texttt{requirements-lock.txt}.
+A training run takes about four minutes on one CPU core. The main experiment (60 runs), the ablations (80 runs; the full-reward condition is shared with the main experiment), the sensitivity study (70 runs, ten of them twice as long), the follow-ups (70 runs) and the encoder control (10 runs) are 290 distinct runs, about five and a half hours on a 4-core machine. No GPU is used. Training is deterministic on CPU given a seed; \texttt{make reproduce} retrains everything into a fresh directory (300 runs, since the shared condition is retrained there) and checks every checkpoint bitwise against the saved ones. Bitwise reproduction requires the pinned versions in \texttt{requirements-lock.txt}.
 
 \paragraph{Hyperparameter pilot.}
 Table~\ref{tab:pilot} lists the two-seed pilot behind the choice of learner settings (\S\ref{sec:method}). It was run with an earlier revision of this code and is archived, not regenerated.
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \setlength{\tabcolsep}{4pt}
@@ -59,7 +59,7 @@ Table~\ref{tab:pilot} lists the two-seed pilot behind the choice of learner sett
 \input{tables/pilot_results.tex}
 \end{table}
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.85\linewidth]{figures/optimal_decisions.pdf}
 \caption{Where the exact planner checks the step it has just executed, by steps remaining and budget slack, for un-cued and cued steps. Colour is the fraction of chain lengths 3--14 for which checking is optimal; the fault prior peaks mid-chain, so the decision also depends on position. At fixed slack and cue the decision changes with the number of remaining steps, which a length-invariant observation does not reveal.}
@@ -69,7 +69,7 @@ Table~\ref{tab:pilot} lists the two-seed pilot behind the choice of learner sett
 \section{Last-Checkpoint Results}
 \label{app:final}
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \setlength{\tabcolsep}{3.5pt}
@@ -78,7 +78,7 @@ Table~\ref{tab:pilot} lists the two-seed pilot behind the choice of learner sett
 \resizebox{\linewidth}{!}{\input{tables/main_results_final.tex}}
 \end{table}
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \setlength{\tabcolsep}{3pt}
@@ -90,7 +90,7 @@ Table~\ref{tab:pilot} lists the two-seed pilot behind the choice of learner sett
 \section{Behavioural Diagnostics}
 \label{app:behaviour}
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \setlength{\tabcolsep}{3pt}
@@ -99,13 +99,25 @@ Table~\ref{tab:pilot} lists the two-seed pilot behind the choice of learner sett
 \resizebox{\linewidth}{!}{\input{tables/behaviour_heldout_long.tex}}
 \end{table}
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \setlength{\tabcolsep}{3pt}
 \caption{As Table~\ref{tab:behaviour}, at lengths 10--14.}
 \label{tab:behaviour_xlong}
 \resizebox{\linewidth}{!}{\input{tables/behaviour_heldout_xlong.tex}}
+\end{table}
+
+\section{Value Probe After a Caught Fault}
+\label{app:probe}
+
+\begin{table}[H]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\caption{Value probe (\texttt{scripts/q\_probe.py}) at decision points right after an \textsc{unsafe} result, training lengths, selected checkpoints unless noted (means over points, then over 10 seeds). R/T: \texttt{REVISE}/\texttt{THINK}. ``True'' values are discounted returns of playing each action and then the same greedy policy, computed exactly from a copy of the environment. ``On track'': learned value of the greedy action against the return that followed, at decision points with a correct running value and no pending repair. ``Excess error'': learned minus true value, minus the on-track error. ``Detect, no repair'': fraction of late checkpoints that collapse while still catching faults.}
+\label{tab:probe}
+\resizebox{\linewidth}{!}{\input{tables/probe_results.tex}}
 \end{table}
 
 \section{Changes from the Earlier Version}

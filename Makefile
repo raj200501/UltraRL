@@ -25,8 +25,8 @@ analyses:  ## observation coverage and the post-UNSAFE value probe, from saved c
 report:  ## every figure, table and number in the paper, from the saved results (no training)
 	$(PYTHON) -m ultrarl.report --results results --paper paper
 
-paper: report  ## SOURCE_DATE_EPOCH pins the PDF's embedded dates to the last commit
-	cd paper && SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
+paper: report  ## main.tex omits embedded dates and IDs, so the PDF depends only on its sources
+	cd paper && latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 
 # Resume or extend the saved experiments in results/: runs whose checkpoints
 # already exist (and match the config) are skipped, evaluation is recomputed.
@@ -35,7 +35,7 @@ $(EXPERIMENTS):
 
 experiments: $(EXPERIMENTS)
 
-# Retrain everything from scratch into results_repro/ (~4.5 h on 4 cores) and
+# Retrain everything from scratch into results_repro/ (~5.5 h on 4 cores) and
 # check that every checkpoint is bitwise identical to the saved one.
 reproduce:
 	@for exp in $(EXPERIMENTS); do \

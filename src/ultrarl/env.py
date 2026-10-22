@@ -87,6 +87,7 @@ class Observable:
     unchecked_gap: int
     step_checked: bool
     fault_located: bool  # an UNSAFE check has been observed earlier in this episode
+    repair_pending: bool  # ... and the located step has not yet been correctly re-executed
     max_depth: int  # normaliser used by the absolute encoder (a fixed constant, not the chain length)
     think_cost: int  # action costs are part of the task specification
     verify_cost: int
@@ -108,6 +109,17 @@ class EpisodeStats:
     # and the current step had not yet been checked ("fresh" opportunities).
     fresh_opps: list[int] = field(default_factory=lambda: [0, 0])
     fresh_verifies: list[int] = field(default_factory=lambda: [0, 0])
+
+
+def fault_position_probabilities(cfg: EnvConfig, depth: int) -> np.ndarray:
+    """Where the fault sits, given that there is one: uniform, or ("middle") peaked at the centre."""
+    if cfg.fault_profile == "uniform":
+        return np.full(depth, 1.0 / depth)
+    positions = np.arange(depth, dtype=float)
+    centre = (depth - 1) / 2.0
+    weights = 1.0 + cfg.fault_peak_weight * (1.0 - np.abs(positions - centre) / max(1.0, centre))
+    weights = np.clip(weights, 0.1, None)
+    return weights / weights.sum()
 
 
 class ChainEnv:
@@ -185,12 +197,7 @@ class ChainEnv:
     def _sample_fault_index(self) -> int:
         if self.cfg.fault_profile == "uniform":
             return int(self.rng.integers(0, self.depth))
-        # "middle": weights peak at the centre of the chain.
-        positions = np.arange(self.depth, dtype=float)
-        centre = (self.depth - 1) / 2.0
-        weights = 1.0 + self.cfg.fault_peak_weight * (1.0 - np.abs(positions - centre) / max(1.0, centre))
-        weights = np.clip(weights, 0.1, None)
-        return int(self.rng.choice(self.depth, p=weights / weights.sum()))
+        return int(self.rng.choice(self.depth, p=fault_position_probabilities(self.cfg, self.depth)))
 
     def _sample_transition(self, value: int) -> Transition:
         options: list[Op] = [("add", int(self.rng.integers(1, 5)))]
@@ -249,6 +256,7 @@ class ChainEnv:
             unchecked_gap=self.unchecked_gap,
             step_checked=self.step_idx in self.checked,
             fault_located=self.fault_located,
+            repair_pending=self.fault_located and not self.repaired,
             max_depth=self.cfg.max_depth,
             think_cost=self.cfg.think_cost,
             verify_cost=self.cfg.verify_cost,
