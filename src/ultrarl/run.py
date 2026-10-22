@@ -42,6 +42,8 @@ SUMMARY_METRICS = [
     "num_actions",
     "verify_count",
     "revise_count",
+    "incomplete_commit",
+    "voluntary_incomplete_commit",
     "fault_detected",
     "repair_success",
     "clean_success",
@@ -108,13 +110,33 @@ def train_all(exp: ExperimentConfig, config_path: str, smoke: bool, out: Path, w
         if retrain or not checkpoint_path(out, m, s, "final").exists()
     ]
     print(f"[train] {len(jobs)} runs to train ({workers} workers)", flush=True)
-    results = _pool_map(_train_job, jobs, workers)
-    if results:
-        manifest = out / "train_runs.csv"
-        frame = pd.DataFrame(results)
-        if manifest.exists() and not retrain:
-            frame = pd.concat([pd.read_csv(manifest), frame]).drop_duplicates(["method", "seed"], keep="last")
-        frame.sort_values(["method", "seed"]).to_csv(manifest, index=False)
+    _pool_map(_train_job, jobs, workers)
+    write_manifest(exp, out)
+
+
+def write_manifest(exp: ExperimentConfig, out: Path) -> pd.DataFrame:
+    """One row per trained run, rebuilt from checkpoint metadata (robust to interrupted runs)."""
+    rows = []
+    for method in exp.learned_methods:
+        for seed in exp.seeds:
+            path = checkpoint_path(out, method, seed, "best")
+            if path.exists():
+                _, meta = DQNAgent.load(path)
+                rows.append(
+                    {
+                        "method": method.name,
+                        "seed": seed,
+                        "episodes": meta["episodes"],
+                        "env_steps": meta["env_steps"],
+                        "parameter_count": meta["parameter_count"],
+                        "selected_episode": meta["checkpoint_episode"],
+                        "selection_success": meta["selection_success"],
+                        "wall_seconds": meta.get("wall_seconds", float("nan")),
+                    }
+                )
+    frame = pd.DataFrame(rows)
+    frame.to_csv(out / "train_runs.csv", index=False)
+    return frame
 
 
 def evaluate_all(exp: ExperimentConfig, config_path: str, smoke: bool, out: Path, workers: int) -> pd.DataFrame:

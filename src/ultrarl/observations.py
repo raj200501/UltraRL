@@ -16,6 +16,11 @@ differ in how position is represented:
     on the absolute chain length, so longer chains produce no new feature values
     (as long as the budget slack stays in range).
 
+``ratio`` (10-d)
+    the invariant features plus slack per remaining step,
+    ``clip(slack / max(1, d - t), 0, 2) / 2``. This tells the agent how thinly its
+    slack must be spread without revealing absolute length.
+
 Budget slack ``b - (d - t)`` is the number of non-THINK actions the agent can
 still afford while finishing the chain.
 """
@@ -29,8 +34,8 @@ import numpy as np
 if TYPE_CHECKING:
     from ultrarl.env import Observable
 
-OBSERVATION_KINDS = ("absolute", "invariant")
-_DIMS = {"absolute": 10, "invariant": 9}
+OBSERVATION_KINDS = ("absolute", "invariant", "ratio")
+_DIMS = {"absolute": 10, "invariant": 9, "ratio": 10}
 SLACK_SCALE = 10.0
 GAP_CAP = 3
 
@@ -61,7 +66,7 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
             float(o.revised_recently),
             *_verify_one_hot(o),
         ]
-    elif kind == "invariant":
+    elif kind in ("invariant", "ratio"):
         features = [
             float(o.step >= o.depth),
             float(o.step == 0),
@@ -71,6 +76,8 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
             float(o.revised_recently),
             *_verify_one_hot(o),
         ]
+        if kind == "ratio":
+            features.append(float(np.clip(slack / max(1, o.depth - o.step), 0.0, 2.0) / 2.0))
     else:
         raise ValueError(f"unknown observation kind {kind!r}; expected one of {OBSERVATION_KINDS}")
     return np.asarray(features, dtype=np.float32)

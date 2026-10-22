@@ -28,6 +28,7 @@ OBS_LABEL = {"inv": "invariant obs.", "abs": "absolute obs."}
 INK, INK_2, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 HEURISTIC_STYLE = {
     "cue_triggered": dict(color="#52514e", linestyle=":", marker="s"),
+    "budget_aware_1": dict(color="#9a9893", linestyle=":", marker="D"),
     "verify_every_step": dict(color="#9a9893", linestyle=":", marker="^"),
     "always_think": dict(color="#c3c2b7", linestyle=":", marker="v"),
 }
@@ -93,9 +94,13 @@ def fig_length_generalization(summary: pd.DataFrame, out: Path) -> None:
             x, y, yerr=err, color=SCHEME_COLOR[scheme], linestyle=OBS_STYLE[obs], marker="o", markersize=4,
             linewidth=1.6, capsize=2, label=label(method),
         )  # fmt: skip
-    for name in ("cue_triggered",):
+    for name, text in (("cue_triggered", "Cue-triggered heuristic"), ("budget_aware_1", "Budget-aware heuristic")):
         y = [row(summary, s, name)["success"] for s, _ in LENGTH_SETTINGS]
-        ax.plot(x, y, linewidth=1.2, markersize=4, label="Cue-triggered heuristic", **HEURISTIC_STYLE[name])
+        ax.plot(x, y, linewidth=1.2, markersize=4, label=text, **HEURISTIC_STYLE[name])
+    never = np.mean([row(summary, s, "always_think")["success"] for s, _ in LENGTH_SETTINGS])
+    ax.axhline(never, color=INK_2, linewidth=0.8, linestyle=(0, (1, 3)))
+    ax.annotate("never checks", (x[-1], never), xytext=(-2, 3), textcoords="offset points", ha="right",
+                fontsize=6.5, color=INK_2)  # fmt: skip
     ax.set_xticks(x, [lab for _, lab in LENGTH_SETTINGS])
     ax.set_xlabel("Chain length")
     ax.set_ylabel("Success rate")
@@ -138,16 +143,31 @@ def fig_learning_curves(curves: pd.DataFrame, summary: pd.DataFrame, out: Path, 
             )
             ax.fill_between(ep / 1000, lo, hi, color=SCHEME_COLOR[scheme], alpha=0.12, linewidth=0)
         ref = row(summary, setting, "cue_triggered")["success"]
-        ax.axhline(ref, **{k: v for k, v in HEURISTIC_STYLE["cue_triggered"].items() if k != "marker"}, linewidth=1.0)
-        ax.annotate(
-            "cue-triggered heuristic", (0, ref), xytext=(2, 3), textcoords="offset points", fontsize=6.5, color=INK_2
-        )
+        style = {k: v for k, v in HEURISTIC_STYLE["cue_triggered"].items() if k != "marker"}
+        ax.axhline(ref, linewidth=1.0, label="Cue-triggered heuristic", **style)
         ax.set_title(title, fontsize=8.5)
         ax.set_xlabel("Training episodes (thousands)")
         ax.set_ylim(0, 1)
     axes[0].set_ylabel("Greedy success rate")
     axes[1].legend(fontsize=6.5, loc="center left", bbox_to_anchor=(1.0, 0.5))
     save(fig, out, "learning_curves")
+
+
+def fig_churn(curves: pd.DataFrame, out: Path, methods: tuple[str, ...] = ("ma_inv", "ma_abs")) -> None:
+    """Per-seed greedy success during training: policies switch abruptly between solutions."""
+    fig, axes = plt.subplots(1, len(methods), figsize=(7.0, 2.4), sharey=True)
+    for ax, method in zip(axes, methods, strict=True):
+        scheme, _ = split(method)
+        sub = curves[curves.method == method]
+        for _, run in sub.groupby("seed"):
+            run = run.sort_values("episode")
+            ax.plot(run.episode / 1000, run.train_like_success, color=SCHEME_COLOR[scheme], linewidth=0.8, alpha=0.55)
+        ax.axhline(COLLAPSE_THRESHOLD, color=INK_2, linewidth=0.8, linestyle=(0, (1, 3)))
+        ax.set_title(label(method), fontsize=8.5)
+        ax.set_xlabel("Training episodes (thousands)")
+        ax.set_ylim(0, 1)
+    axes[0].set_ylabel("Greedy success, lengths 3–6")
+    save(fig, out, "policy_churn")
 
 
 def fig_selectivity(summary: pd.DataFrame, out: Path) -> None:
@@ -167,9 +187,9 @@ def fig_selectivity(summary: pd.DataFrame, out: Path) -> None:
         ax.set_xlim(-0.03, 1.03)
         ax.set_xlabel("P(VERIFY | unchecked step)")
     axes[0].set_yticks(y, names, fontsize=7)
-    axes[0].scatter([], [], s=22, facecolor="white", edgecolor=INK_2, label="cue = 0")
-    axes[0].scatter([], [], s=22, color=INK_2, label="cue = 1")
-    axes[0].legend(fontsize=7, loc="lower right")
+    axes[0].scatter([], [], s=22, facecolor="white", edgecolor=INK_2, label="unchecked step, cue = 0")
+    axes[0].scatter([], [], s=22, color=INK_2, label="unchecked step, cue = 1")
+    fig.legend(fontsize=7, loc="upper center", ncol=2, bbox_to_anchor=(0.62, 1.04))
     save(fig, out, "cue_selectivity")
 
 
@@ -183,7 +203,7 @@ def fmt(r: pd.Series, metric: str, digits: int = 2) -> str:
 
 def latex_table(header: list[str], rows: list[list[str]], align: str) -> str:
     lines = [f"\\begin{{tabular}}{{{align}}}", "\\toprule", " & ".join(header) + " \\\\", "\\midrule"]
-    lines += [" & ".join(r) + " \\\\" for r in rows]
+    lines += [r[0] if len(r) == 1 else " & ".join(r) + " \\\\" for r in rows]
     lines += ["\\bottomrule", "\\end{tabular}", ""]
     return "\n".join(lines)
 
@@ -192,13 +212,19 @@ def display(summary: pd.DataFrame, method: str) -> str:
     return summary.loc[summary.method == method, "display_name"].iloc[0]
 
 
-def table_main(summary: pd.DataFrame, out: Path) -> None:
-    methods = ["random", "always_think", "verify_every_step", "cue_triggered", *LEARNED]
+FINAL = "@final"
+
+
+def table_main(summary: pd.DataFrame, out: Path, suffix: str = "", name: str = "main_results") -> None:
+    heuristics = ["random", "always_think", "verify_every_step", "cue_triggered", "budget_aware_1"]
+    methods = heuristics + [m + suffix for m in LEARNED]
     rows = []
     for m in methods:
+        if m == LEARNED[0] + suffix:
+            rows.append(["\\midrule"])
         rows.append(
             [
-                display(summary, m),
+                display(summary, m).removesuffix(FINAL),
                 fmt(row(summary, "train_like", m), "success"),
                 fmt(row(summary, "heldout_long", m), "success"),
                 fmt(row(summary, "heldout_xlong", m), "success"),
@@ -207,7 +233,7 @@ def table_main(summary: pd.DataFrame, out: Path) -> None:
             ]
         )
     header = ["Method", "Success 3--6", "Success 7--9", "Success 10--14", "Detect 7--9", "Cost-adj. 7--9"]
-    (out / "main_results.tex").write_text(latex_table(header, rows, "lccccc"), encoding="utf-8")
+    (out / f"{name}.tex").write_text(latex_table(header, rows, "lccccc"), encoding="utf-8")
 
 
 SHIFTS = [
@@ -224,7 +250,7 @@ SHIFTS = [
 
 
 def table_shifts(summary: pd.DataFrame, out: Path) -> None:
-    methods = ["always_think", "verify_every_step", "cue_triggered", "outcome_inv", "ma_abs", "ma_inv"]
+    methods = ["always_think", "cue_triggered", "budget_aware_1", "outcome_inv", "naive_inv", "ma_abs", "ma_inv"]
     rows = []
     for m in methods:
         rows.append([display(summary, m)] + [f"{row(summary, s, m)['success']:.2f}" for s, _ in SHIFTS])
@@ -234,7 +260,7 @@ def table_shifts(summary: pd.DataFrame, out: Path) -> None:
 
 def table_ablation(summary: pd.DataFrame, out: Path, name: str = "ablation_results") -> None:
     rows = []
-    for m in summary.method.drop_duplicates():
+    for m in [m for m in summary.method.drop_duplicates() if not m.endswith(FINAL)]:
         rows.append(
             [
                 display(summary, m),
@@ -247,6 +273,24 @@ def table_ablation(summary: pd.DataFrame, out: Path, name: str = "ablation_resul
         )
     header = ["Variant", "Success 3--6", "Success 7--9", "Detect 7--9", "$P(V\\mid c{=}1)$", "$P(V\\mid c{=}0)$"]
     (out / f"{name}.tex").write_text(latex_table(header, rows, "lccccc"), encoding="utf-8")
+
+
+COLLAPSE_THRESHOLD = 0.35  # greedy success at or below "never verify" (~0.2-0.3)
+
+
+def curve_stats(curves: pd.DataFrame, per_seed: pd.DataFrame, burn_in: int = 5000) -> dict[str, float]:
+    """Training-stability statistics quoted in the text, keyed for ``write_macros``."""
+    out: dict[str, float] = {}
+    late = curves[curves.episode > burn_in]
+    for method, sub in late.groupby("method"):
+        collapsed = sub.train_like_success <= COLLAPSE_THRESHOLD
+        out[f"main/{method}/collapse_rate"] = float(collapsed.mean())
+        jumps = sub.sort_values("episode").groupby("seed").train_like_success.apply(lambda x: x.diff().abs().mean())
+        out[f"main/{method}/mean_abs_change"] = float(jumps.mean())
+        selected = per_seed[(per_seed.method == method) & (per_seed.setting == "train_like")].success
+        out[f"main/{method}/discovery_rate"] = float((selected > 0.5).mean())
+        out[f"main/{method}/discovered_seeds"] = float((selected > 0.5).sum())
+    return out
 
 
 def key_numbers(per_seed: pd.DataFrame) -> pd.DataFrame:
@@ -267,6 +311,44 @@ def key_numbers(per_seed: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+MACRO_HEADER = r"""% Generated by `python -m ultrarl.report`; do not edit by hand.
+% \val{exp/method/setting/metric} -> mean over seeds; \ci{...} -> mean [95% bootstrap CI].
+\makeatletter
+\newcommand{\val}[1]{\ifcsname ur@#1\endcsname\csname ur@#1\endcsname\else\errmessage{UltraRL: no result named #1}\fi}
+\newcommand{\ci}[1]{\val{#1}\,{\scriptsize[\val{#1/lo}, \val{#1/hi}]}}
+\makeatother
+"""
+
+
+def _macro(key: str, value: float, digits: int = 2) -> str:
+    text = "--" if np.isnan(value) else f"{value:.{digits}f}"
+    return f"\\expandafter\\def\\csname ur@{key}\\endcsname{{{text}}}"
+
+
+def _pct_macro(key: str, value: float) -> str:
+    return f"\\expandafter\\def\\csname ur@{key}/pct\\endcsname{{{100 * value:.0f}\\%}}"
+
+
+def write_macros(path: Path, summaries: dict[str, pd.DataFrame], extras: dict[str, float]) -> None:
+    lines = [MACRO_HEADER]
+    for exp, summary in summaries.items():
+        metrics = [c for c in summary.columns if f"{c}_lo" in summary.columns]
+        for _, r in summary.iterrows():
+            for metric in metrics:
+                key = f"{exp}/{r['method']}/{r['setting']}/{metric}"
+                lines += [
+                    _macro(key, r[metric]),
+                    _macro(f"{key}/lo", r[f"{metric}_lo"]),
+                    _macro(f"{key}/hi", r[f"{metric}_hi"]),
+                    _pct_macro(key, r[metric]),
+                ]
+    for key, value in extras.items():
+        lines.append(_macro(key, value))
+        if key.endswith("_rate"):
+            lines.append(_pct_macro(key, value))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--results", default="results")
@@ -284,14 +366,25 @@ def main(argv: list[str] | None = None) -> None:
     fig_length_generalization(summary, figures)
     fig_learning_curves(curves, summary, figures, LEARNED)
     fig_selectivity(summary, figures)
+    fig_churn(curves, figures)
     table_main(summary, tables)
+    table_main(summary, tables, suffix=FINAL, name="main_results_final")
     table_shifts(summary, tables)
-    key_numbers(per_seed).to_csv(main_dir / "key_comparisons.csv", index=False)
+    comparisons = key_numbers(per_seed)
+    comparisons.to_csv(main_dir / "key_comparisons.csv", index=False)
 
-    ablation_dir = results / "ablations"
-    if (ablation_dir / "eval_summary.csv").exists():
-        table_ablation(pd.read_csv(ablation_dir / "eval_summary.csv"), tables)
-    print(f"[report] wrote figures to {figures} and tables to {tables}")
+    summaries = {"main": summary}
+    extras = curve_stats(curves, per_seed)
+    for _, c in comparisons.iterrows():
+        key = f"diff/{c['a']}-{c['b']}/{c['setting']}/{c['metric']}"
+        extras.update({key: c["mean"], f"{key}/lo": c["lo"], f"{key}/hi": c["hi"]})
+    for name in ("ablations", "sensitivity"):
+        path = results / name / "eval_summary.csv"
+        if path.exists():
+            summaries[name] = pd.read_csv(path)
+            table_ablation(summaries[name], tables, name=f"{name}_results")
+    write_macros(paper / "numbers.tex", summaries, extras)
+    print(f"[report] wrote figures to {figures}, tables to {tables} and {paper / 'numbers.tex'}")
 
 
 if __name__ == "__main__":

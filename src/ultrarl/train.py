@@ -109,6 +109,7 @@ def train_run(exp: ExperimentConfig, method: Method, seed: int, out_dir: Path, v
         "env_config": {k: list(v) if isinstance(v, tuple) else v for k, v in asdict(env_config).items()},
         "parameter_count": agent.parameter_count(),
     }
+    metadata["wall_seconds"] = round(time.time() - start_time, 1)
     final_path = checkpoint_path(out_dir, method, seed, "final")
     final_path.parent.mkdir(parents=True, exist_ok=True)
     agent.save(final_path, {**metadata, "checkpoint": "final", "checkpoint_episode": tc.episodes})

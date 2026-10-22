@@ -164,3 +164,13 @@ def test_cue_selectivity_counts_fresh_opportunities_only(env):
     assert m["fresh_opps_cue1"] == 1 and m["fresh_verifies_cue1"] == 1
     # steps 2 and 3 (cue 0) were fresh opportunities where the agent chose not to verify.
     assert m["fresh_opps_cue0"] == 2 and m["fresh_verifies_cue0"] == 0
+
+
+def test_incomplete_commit_metrics():
+    env = ChainEnv(EnvConfig(budget_extra=0))
+    env.reset(seed=0, depth_range=(3, 3), fault_index=None)
+    m = play(env, [T, C])["metrics"]
+    assert m["incomplete_commit"] == 1.0 and m["voluntary_incomplete_commit"] == 1.0
+    env.reset(seed=0, depth_range=(3, 3), fault_index=None)
+    m = play(env, [T, T, T, C])["metrics"]
+    assert m["incomplete_commit"] == 0.0 and m["success"] == 1.0

@@ -73,6 +73,8 @@ def aggregate(rows: list[dict[str, float]]) -> dict[str, float]:
         "cost_adjusted_accuracy": nanmean(cols["cost_adjusted_accuracy"]),
         "verify_count": nanmean(cols["verify_count"]),
         "revise_count": nanmean(cols["revise_count"]),
+        "incomplete_commit": nanmean(cols["incomplete_commit"]),
+        "voluntary_incomplete_commit": nanmean(cols["voluntary_incomplete_commit"]),
         "fault_rate": nanmean(cols["fault_present"]),
         "fault_detected": nanmean(cols["fault_detected"]),
         "repair_success": nanmean(cols["repair_success"]),

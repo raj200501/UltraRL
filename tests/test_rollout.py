@@ -16,6 +16,8 @@ def test_aggregate_pools_ratio_metrics():
     nan = float("nan")
     base = dict(
         num_actions=1.0,
+        incomplete_commit=0.0,
+        voluntary_incomplete_commit=0.0,
         cost_spent=1.0,
         cost_adjusted_accuracy=0.0,
         revise_count=0.0,

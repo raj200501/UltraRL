@@ -173,6 +173,8 @@ class ChainEnv:
         self.revised_recently = False
         self.done = False
         self.success = False
+        self.incomplete_commit = False
+        self.voluntary_incomplete = False
         self.stats = EpisodeStats()
         return self.observation()
 
@@ -256,6 +258,7 @@ class ChainEnv:
         if not self.action_mask()[action]:
             raise ValueError(f"action {action.name} is not available in the current state")
 
+        self.action_mask_before_commit = self.action_mask()
         self._record_cue_selectivity(action)
         gap_before = self.unchecked_gap
         event = StepEvent(action=action.name, depth=self.depth, cost=self.action_cost(action))
@@ -269,6 +272,8 @@ class ChainEnv:
         else:
             self.done = True
             self.success = self.step_idx == self.depth and self.belief_valid
+            self.incomplete_commit = self.step_idx < self.depth
+            self.voluntary_incomplete = self.incomplete_commit and bool(self.action_mask_before_commit[Action.THINK])
             event.success = self.success
 
         self.remaining_budget -= event.cost
@@ -339,6 +344,9 @@ class ChainEnv:
             "num_actions": float(s.num_actions),
             "cost_spent": float(s.cost_spent),
             "cost_adjusted_accuracy": float(self.success) - self.cfg.cost_adjust_weight * s.cost_spent,
+            # committed before executing the whole chain (voluntarily = THINK was still affordable)
+            "incomplete_commit": float(self.incomplete_commit),
+            "voluntary_incomplete_commit": float(self.voluntary_incomplete),
             "verify_count": float(s.verify_count),
             "revise_count": float(s.revise_count),
             "verify_tp": float(s.verify_tp),

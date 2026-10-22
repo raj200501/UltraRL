@@ -1,0 +1,58 @@
+# Does the observation-encoder effect survive other DQN settings?
+# (lr, target update) alternatives to the main configuration, 5 seeds each.
+name: sensitivity
+
+env:
+  train_depth_range: [3, 6]
+  max_depth: 9
+  p_fault: 0.8
+  fault_profile: middle
+  fault_peak_weight: 5.0
+  cue_hit_rate: 0.85
+  cue_false_positive_rate: 0.15
+  budget_extra: 6
+  reward_scheme: monitorability_aware
+
+train:
+  episodes: 20000
+  learning_rate: 0.001
+  hidden_size: 64
+  batch_size: 64
+  replay_size: 25000
+  warmup_steps: 500
+  target_update_interval: 200
+  epsilon_start: 0.5
+  epsilon_end: 0.02
+  epsilon_decay_fraction: 0.85
+  curve_interval: 1000
+  curve_episodes: 200
+
+seeds: [0, 1, 2, 3, 4]
+
+methods:
+  - {name: ma_abs_lr3e-4, display_name: "abs, lr $3{\\cdot}10^{-4}$", env_overrides: {observation: absolute}, train_overrides: {learning_rate: 0.0003}}
+  - {name: ma_inv_lr3e-4, display_name: "inv, lr $3{\\cdot}10^{-4}$", env_overrides: {observation: invariant}, train_overrides: {learning_rate: 0.0003}}
+  - {name: ma_abs_sync1000, display_name: "abs, hard sync 1000", env_overrides: {observation: absolute}, train_overrides: {target_update_interval: 1000}}
+  - {name: ma_inv_sync1000, display_name: "inv, hard sync 1000", env_overrides: {observation: invariant}, train_overrides: {target_update_interval: 1000}}
+  - {name: ma_abs_polyak, display_name: "abs, Polyak $\\tau{=}0.005$", env_overrides: {observation: absolute}, train_overrides: {target_tau: 0.005}}
+  - {name: ma_inv_polyak, display_name: "inv, Polyak $\\tau{=}0.005$", env_overrides: {observation: invariant}, train_overrides: {target_tau: 0.005}}
+
+evaluation:
+  episodes: 500
+  curve_settings:
+    - {name: train_like, depth_range: [3, 6]}
+    - {name: heldout_long, depth_range: [7, 9]}
+  settings:
+    - {name: train_like, depth_range: [3, 6]}
+    - {name: heldout_long, depth_range: [7, 9]}
+    - {name: heldout_xlong, depth_range: [10, 14]}
+
+smoke:
+  train: {episodes: 300, curve_interval: 150, curve_episodes: 20, warmup_steps: 100}
+  seeds: [0]
+  evaluation:
+    episodes: 30
+    curve_settings:
+      - {name: train_like, depth_range: [3, 6]}
+    settings:
+      - {name: train_like, depth_range: [3, 6]}

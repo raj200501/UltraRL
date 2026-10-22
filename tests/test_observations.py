@@ -8,7 +8,7 @@ from ultrarl.observations import observation_dim
 T, V = Action.THINK, Action.VERIFY
 
 
-@pytest.mark.parametrize("kind", ["absolute", "invariant"])
+@pytest.mark.parametrize("kind", ["absolute", "invariant", "ratio"])
 def test_observation_shape_and_dtype(kind):
     env = ChainEnv(EnvConfig(observation=kind))
     obs = env.reset(seed=0)
