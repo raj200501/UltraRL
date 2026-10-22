@@ -1,0 +1,52 @@
+import numpy as np
+import pytest
+
+from ultrarl.config import EnvConfig, EvalSetting
+from ultrarl.env import ChainEnv
+from ultrarl.optimal import OptimalPlanner, fault_prior, initial_slack, optimal_success
+from ultrarl.policies import heuristic_act
+from ultrarl.rollout import evaluate
+
+
+def test_fault_prior_matches_the_environment():
+    cfg = EnvConfig()
+    env = ChainEnv(cfg, seed=0)
+    counts = np.zeros(8)
+    n = 20000
+    for i in range(n):
+        env.reset(seed=[9, i], depth_range=(7, 7))
+        if env.fault_index is not None:
+            counts[env.fault_index] += 1
+    prior = fault_prior(cfg, 7)
+    assert prior.sum() == pytest.approx(cfg.p_fault)
+    assert np.abs(counts[:7] / n - prior).max() < 0.01
+
+
+def test_value_is_one_when_every_step_can_be_checked_and_repaired():
+    cfg = EnvConfig()  # slack 6: four checks plus one undo-and-redo
+    assert OptimalPlanner(cfg, 4).value(0, initial_slack(cfg, 4)) == pytest.approx(1.0)
+    assert OptimalPlanner(cfg, 5).value(0, initial_slack(cfg, 5)) < 1.0
+
+
+def test_value_without_faults_or_without_budget():
+    assert optimal_success(EnvConfig(p_fault=0.0), (3, 14)) == pytest.approx(1.0)
+    cfg = EnvConfig(budget_extra=0)  # no check is affordable: success iff no fault
+    assert optimal_success(cfg, (6, 6)) == pytest.approx(1.0 - cfg.p_fault)
+
+
+CONFIGS = [EnvConfig(), EnvConfig(verify_cost=2, budget_extra=5), EnvConfig(fault_profile="uniform")]
+
+
+@pytest.mark.parametrize("cfg", CONFIGS)
+def test_policy_achieves_the_planned_value(cfg):
+    setting = EvalSetting("t", (8, 8))
+    m = evaluate(heuristic_act("optimal", 0, cfg), cfg, setting, run_seed=0, episodes=4000)
+    planned = optimal_success(cfg, setting.depth_range)
+    assert abs(m["success"] - planned) < 4 * np.sqrt(planned * (1 - planned) / 4000)
+
+
+def test_optimal_beats_the_heuristics():
+    cfg, setting = EnvConfig(), EvalSetting("t", (7, 14))
+    planned = optimal_success(cfg, setting.depth_range)
+    for name in ("cue_triggered", "budget_aware_1", "verify_every_step"):
+        assert evaluate(heuristic_act(name, 0), cfg, setting, 0, 2000)["success"] < planned

@@ -83,14 +83,15 @@ def _eval_job(job: tuple[str, bool, str, int, str]) -> list[dict[str, Any]]:
             path = checkpoint_path(Path(out_dir), method, seed, which)
             check_checkpoint_config(exp, method, path)
             agent, _ = DQNAgent.load(path)
-            variants.append((method.name + suffix, method.display_name + suffix, lambda a=agent: greedy_act(a)))
+            variants.append((method.name + suffix, method.display_name + suffix, lambda _cfg, a=agent: greedy_act(a)))
     else:
-        variants.append((method.name, method.display_name, lambda: heuristic_act(method.name, seed)))
+        variants.append((method.name, method.display_name, lambda cfg: heuristic_act(method.name, seed, cfg)))
 
     rows = []
     for name, display_name, make_act in variants:
         for setting in exp.eval_settings:
-            metrics = evaluate(make_act(), exp.method_env(method, setting), setting, seed, exp.eval_episodes)
+            env_config = exp.method_env(method, setting)
+            metrics = evaluate(make_act(env_config), env_config, setting, seed, exp.eval_episodes)
             rows.append(
                 {"setting": setting.name, "method": name, "display_name": display_name, "seed": seed, **metrics}
             )

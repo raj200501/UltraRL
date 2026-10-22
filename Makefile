@@ -2,7 +2,7 @@ PYTHON ?= python
 WORKERS ?= 4
 EXPERIMENTS := main ablations sensitivity followups encoders
 
-.PHONY: install test lint smoke report paper experiments reproduce equivalence clean $(EXPERIMENTS)
+.PHONY: install test lint smoke analyses report paper experiments reproduce equivalence clean $(EXPERIMENTS)
 
 install:  ## editable install with dev tools (CPU torch is enough)
 	$(PYTHON) -m pip install -e ".[dev]"
@@ -17,6 +17,10 @@ lint:
 smoke:  ## ~30 s end-to-end run of the whole pipeline in a scratch directory
 	rm -rf results/smoke
 	$(PYTHON) -m ultrarl.run --config configs/main.yaml --out results/smoke --smoke --workers $(WORKERS)
+
+analyses:  ## observation coverage and the post-UNSAFE value probe, from saved checkpoints (~4 min)
+	$(PYTHON) scripts/observation_coverage.py
+	$(PYTHON) scripts/q_probe.py
 
 report:  ## every figure, table and number in the paper, from the saved results (no training)
 	$(PYTHON) -m ultrarl.report --results results --paper paper

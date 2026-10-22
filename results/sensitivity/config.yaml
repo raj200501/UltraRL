@@ -1,5 +1,7 @@
-# Does the observation-encoder effect survive other DQN settings?
+# Do the encoder effect and the reward comparison survive other DQN settings?
 # (lr, target update) alternatives to the main configuration, 5 seeds each.
+# Outcome-only and naive agents use the invariant encoder; reward_scheme below
+# is the default for the monitorability-aware rows.
 name: sensitivity
 
 env:
@@ -36,6 +38,12 @@ methods:
   - {name: ma_inv_sync1000, display_name: "inv, hard sync 1000", env_overrides: {observation: invariant}, train_overrides: {target_update_interval: 1000}}
   - {name: ma_abs_polyak, display_name: "abs, Polyak $\\tau{=}0.005$", env_overrides: {observation: absolute}, train_overrides: {target_tau: 0.005}}
   - {name: ma_inv_polyak, display_name: "inv, Polyak $\\tau{=}0.005$", env_overrides: {observation: invariant}, train_overrides: {target_tau: 0.005}}
+  - {name: outcome_inv_lr3e-4, display_name: "outcome, inv, lr $3{\\cdot}10^{-4}$", env_overrides: {observation: invariant, reward_scheme: outcome_only}, train_overrides: {learning_rate: 0.0003}}
+  - {name: naive_inv_lr3e-4, display_name: "naive, inv, lr $3{\\cdot}10^{-4}$", env_overrides: {observation: invariant, reward_scheme: naive_process}, train_overrides: {learning_rate: 0.0003}}
+  - {name: outcome_inv_sync1000, display_name: "outcome, inv, hard sync 1000", env_overrides: {observation: invariant, reward_scheme: outcome_only}, train_overrides: {target_update_interval: 1000}}
+  - {name: naive_inv_sync1000, display_name: "naive, inv, hard sync 1000", env_overrides: {observation: invariant, reward_scheme: naive_process}, train_overrides: {target_update_interval: 1000}}
+  - {name: outcome_inv_polyak, display_name: "outcome, inv, Polyak $\\tau{=}0.005$", env_overrides: {observation: invariant, reward_scheme: outcome_only}, train_overrides: {target_tau: 0.005}}
+  - {name: naive_inv_polyak, display_name: "naive, inv, Polyak $\\tau{=}0.005$", env_overrides: {observation: invariant, reward_scheme: naive_process}, train_overrides: {target_tau: 0.005}}
 
 evaluation:
   episodes: 500

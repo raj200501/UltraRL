@@ -11,7 +11,7 @@ Conditional on a fault, its position $h \in \{0,\dots,d-1\}$ has weight $1 + 5\,
 At every decision point where the current step $t > 0$ has not been checked and \texttt{VERIFY} is available, we record the cue $c_t$ and whether the agent chose \texttt{VERIFY}. $P(\texttt{VERIFY} \mid c)$ pools these counts over all evaluation episodes of a seed.
 
 \paragraph{Validation against the original implementation.}
-The environment was rewritten for this version. \texttt{make equivalence} (\texttt{scripts/check\_legacy\_equivalence.py}) extracts the original implementation from git history and plays identical random action sequences in both. Over 86{,}112 steps from 18{,}000 episodes, covering all reward schemes and both budget-penalty settings, the two agree exactly on transitions, masks, rewards, termination and absolute observations. The only difference is the observation returned after the terminal \texttt{COMMIT}, which no learner uses.
+The environment was rewritten for this version. \texttt{make equivalence} (\texttt{scripts/check\_legacy\_equivalence.py}) compares it with the original implementation, vendored from commit \texttt{81ec8cb} into \texttt{scripts/legacy/} with formatting changes only, by playing identical random action sequences in both. Over 86{,}112 steps from 18{,}000 episodes, covering all reward schemes and both budget-penalty settings, the two agree exactly on transitions, masks, rewards, termination and absolute observations. The only difference is the observation returned after the terminal \texttt{COMMIT}, which no learner uses.
 
 \section{Hyperparameters and Compute}
 \label{app:hparams}
@@ -45,7 +45,26 @@ Evaluation & 500 episodes per seed and setting \\
 \end{tabular}
 \end{table}
 
-A training run takes about four minutes on one CPU core. The main experiment (60 runs), the ablations (80 runs; the full-reward condition is shared with the main experiment), the sensitivity study (30 runs), the follow-ups (40 runs) and the encoder control (10 runs) are 220 distinct runs, about four hours on a 4-core machine. No GPU is used. Training is deterministic on CPU given a seed; \texttt{make reproduce} retrains everything into a fresh directory (230 runs, since the shared condition is retrained there) and checks every checkpoint bitwise against the saved ones. Bitwise reproduction requires the pinned versions in \texttt{requirements-lock.txt}.
+A training run takes about four minutes on one CPU core. The main experiment (60 runs), the ablations (80 runs; the full-reward condition is shared with the main experiment), the sensitivity study (60 runs), the follow-ups (40 runs) and the encoder control (10 runs) are 250 distinct runs, about four and a half hours on a 4-core machine. No GPU is used. Training is deterministic on CPU given a seed; \texttt{make reproduce} retrains everything into a fresh directory (260 runs, since the shared condition is retrained there) and checks every checkpoint bitwise against the saved ones. Bitwise reproduction requires the pinned versions in \texttt{requirements-lock.txt}.
+
+\paragraph{Hyperparameter pilot.}
+Table~\ref{tab:pilot} lists the two-seed pilot behind the choice of learner settings (\S\ref{sec:method}). It was run with an earlier revision of this code and is archived, not regenerated.
+
+\begin{table}[h]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Hyperparameter pilot (2 seeds, selected checkpoints). The setting used throughout is learning rate $10^{-3}$ with a hard target update every 200 steps.}
+\label{tab:pilot}
+\input{tables/pilot_results.tex}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\linewidth]{figures/optimal_decisions.pdf}
+\caption{Where the exact planner checks the step it has just executed, by steps remaining and budget slack, for un-cued and cued steps. Colour is the fraction of chain lengths 3--14 for which checking is optimal; the fault prior peaks mid-chain, so the decision also depends on position. At fixed slack and cue the decision changes with the number of remaining steps, which a length-invariant observation does not reveal.}
+\label{fig:optimal}
+\end{figure}
 
 \section{Last-Checkpoint Results}
 \label{app:final}
@@ -100,5 +119,5 @@ The first public version of this repository reported that monitorability-aware R
   \item \textbf{Localization metric.} The original ``failed-episode localization score'' gave full credit when the fault was on the last step and the agent committed without checking anything, and partial credit for any commit at or after the fault step; as a result the never-check policy scored 0.07. It inflated every method's diagnostic score without changing the main comparison. We replace it with fault detection, the probability that a check caught the fault, and add repair completion.
   \item \textbf{Stronger baselines and statistics.} We add a budget-aware heuristic tuned on training lengths, use 10 seeds instead of 5, and report $t$-intervals, paired differences and permutation tests instead of standard errors.
   \item \textbf{Learner details.} The replay buffer now samples minibatches with replacement (the original sampled without replacement), and the original's per-step \texttt{invalid\_action\_penalty} was dropped because masked agents never take invalid actions. Neither affects the environment's dynamics or rewards (Appendix~\ref{app:env}).
-  \item \textbf{Heuristic definitions.} The original heuristics committed as soon as the last step was executed, so they never checked the final step, and the cue-triggered heuristic re-checked a step after repairing it. Ours check the final step and never re-check. On the same evaluation episodes this raises cue-triggered success at lengths 3--6 from 0.82 to 0.87 (almost entirely from the final-step check) and verify-every-step success from 0.57 to 0.80. Learned agents are unaffected.
+  \item \textbf{Heuristic definitions.} The original heuristics committed as soon as the last step was executed, so they never checked the final step, and the cue-triggered heuristic re-checked a step after repairing it. Ours check the final step and never re-check. On the same evaluation episodes this raises cue-triggered success at lengths 3--6 from 0.82 to \val{main/cue_triggered/train_like/success} (almost entirely from the final-step check) and verify-every-step success from 0.57 to \val{main/verify_every_step/train_like/success}. Learned agents are unaffected.
 \end{enumerate}

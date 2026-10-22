@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
+from ultrarl.config import EnvConfig, load_experiment  # noqa: E402
+from ultrarl.optimal import OptimalPlanner  # noqa: E402
 from ultrarl.stats import FINAL_SUFFIX, holm, paired_difference, t_interval  # noqa: E402
 
 # Categorical slots in fixed order (one hue per reward scheme); observation
@@ -27,6 +29,7 @@ OBS_STYLE = {"inv": "-", "abs": "--"}
 OBS_LABEL = {"inv": "invariant obs.", "abs": "absolute obs."}
 INK, INK_2, GRID = "#0b0b0b", "#52514e", "#e4e3df"
 HEURISTIC_STYLE = {
+    "optimal": dict(color=INK, linestyle="-.", marker="*"),
     "cue_triggered": dict(color="#52514e", linestyle=":", marker="s"),
     "budget_aware_1": dict(color="#9a9893", linestyle=":", marker="D"),
     "verify_every_step": dict(color="#9a9893", linestyle=":", marker="^"),
@@ -94,7 +97,12 @@ def fig_length_generalization(summary: pd.DataFrame, out: Path) -> None:
             x, y, yerr=err, color=SCHEME_COLOR[scheme], linestyle=OBS_STYLE[obs], marker="o", markersize=4,
             linewidth=1.6, capsize=2, label=label(method),
         )  # fmt: skip
-    for name, text in (("cue_triggered", "Cue-triggered heuristic"), ("budget_aware_1", "Budget-aware heuristic")):
+    references = (
+        ("optimal", "Optimal planner (knows length)"),
+        ("cue_triggered", "Cue-triggered heuristic"),
+        ("budget_aware_1", "Budget-aware heuristic"),
+    )
+    for name, text in references:
         y = [row(summary, s, name)["success"] for s, _ in LENGTH_SETTINGS]
         ax.plot(x, y, linewidth=1.2, markersize=4, label=text, **HEURISTIC_STYLE[name])
     never = np.mean([row(summary, s, "always_think")["success"] for s, _ in LENGTH_SETTINGS])
@@ -194,6 +202,27 @@ def fig_selectivity(summary: pd.DataFrame, out: Path) -> None:
 
 
 # ---------------------------------------------------------------------- tables
+def fig_optimal_decisions(cfg: EnvConfig, out: Path, depths: range = range(3, 15)) -> None:
+    """Where the exact planner checks a step it has just executed, by remaining steps
+    and budget slack: the fraction of chain lengths for which checking is optimal."""
+    max_remaining, max_slack = depths.stop - 2, cfg.budget_extra
+    planners = {d: OptimalPlanner(cfg, d) for d in depths}
+    fig, axes = plt.subplots(1, 2, figsize=(5.6, 2.1), sharey=True)
+    for ax, cue in zip(axes, (0, 1), strict=True):
+        grid = np.full((max_slack + 1, max_remaining + 1), np.nan)
+        for slack in range(max_slack + 1):
+            for remaining in range(max_remaining + 1):
+                decisions = [p.should_check(d - remaining, slack, cue) for d, p in planners.items() if d > remaining]
+                grid[slack, remaining] = np.mean(decisions)
+        image = ax.imshow(grid, origin="lower", cmap="Greens", vmin=0, vmax=1, aspect="auto")
+        ax.set_title(f"cue {'on' if cue else 'off'}", fontsize=8)
+        ax.set_xlabel("Steps remaining")
+        ax.grid(False)
+    axes[0].set_ylabel("Budget slack")
+    fig.colorbar(image, ax=axes, fraction=0.04, pad=0.02, label="P(check is optimal)")
+    save(fig, out, "optimal_decisions")
+
+
 def fmt(r: pd.Series, metric: str, digits: int = 2) -> str:
     v, lo, hi = r[metric], r[f"{metric}_lo"], r[f"{metric}_hi"]
     if np.isnan(v):
@@ -216,7 +245,7 @@ FINAL = FINAL_SUFFIX
 
 
 def table_main(summary: pd.DataFrame, out: Path, suffix: str = "", name: str = "main_results") -> None:
-    heuristics = ["random", "always_think", "verify_every_step", "cue_triggered", "budget_aware_1"]
+    heuristics = ["random", "always_think", "verify_every_step", "cue_triggered", "budget_aware_1", "optimal"]
     methods = heuristics + [m + suffix for m in LEARNED]
     rows = []
     for m in methods:
@@ -249,11 +278,18 @@ SHIFTS = [
 ]
 
 
+def pm(r: pd.Series, metric: str) -> str:
+    """Mean and half-width of its (symmetric) t-interval."""
+    return f"{r[metric]:.2f}\\,{{\\scriptsize$\\pm${r[metric] - r[metric + '_lo']:.2f}}}"
+
+
 def table_shifts(summary: pd.DataFrame, out: Path) -> None:
-    methods = ["always_think", "cue_triggered", "budget_aware_1", "outcome_inv", "naive_inv", "ma_abs", "ma_inv"]
+    methods = [
+        "always_think", "cue_triggered", "budget_aware_1", "optimal", "outcome_inv", "naive_inv", "ma_abs", "ma_inv",
+    ]  # fmt: skip
     rows = []
     for m in methods:
-        rows.append([display(summary, m)] + [f"{row(summary, s, m)['success']:.2f}" for s, _ in SHIFTS])
+        rows.append([display(summary, m)] + [pm(row(summary, s, m), "success") for s, _ in SHIFTS])
     header = ["Method"] + [lab for _, lab in SHIFTS]
     (out / "shift_results.tex").write_text(latex_table(header, rows, "l" + "c" * len(SHIFTS)), encoding="utf-8")
 
@@ -404,7 +440,7 @@ def comparison_macros(comparisons: pd.DataFrame, prefix: str = "diff") -> dict[s
 
 def table_behaviour(summary: pd.DataFrame, out: Path, setting: str = "heldout_long") -> None:
     """Behavioural diagnostics of the learned agents and two references."""
-    methods = ["cue_triggered", "budget_aware_1", *LEARNED]
+    methods = ["cue_triggered", "budget_aware_1", "optimal", *LEARNED]
     rows = []
     for m in methods:
         r = row(summary, setting, m)
@@ -488,8 +524,74 @@ def table_encoders(
     (out / "encoder_results.tex").write_text(latex_table(header, rows, "lccccc"), encoding="utf-8")
 
 
+def table_pilot(pilot: Path, out: Path) -> None:
+    """The archived two-seed hyperparameter pilot (results/pilot), selected checkpoints."""
+    rows = []
+    for stage in sorted(pilot.glob("stage*")):
+        summary = pd.read_csv(stage / "eval_summary.csv")
+        for method in [m for m in summary.method.drop_duplicates() if not m.endswith(FINAL)]:
+            scheme, obs, *rest = method.split("_")
+            lr = "$3{\\cdot}10^{-4}$" if any(t in ("lr0.0003", "lr3e4") for t in rest) else "$10^{-3}$"
+            sync = next((f"hard, {t[2:]}" for t in rest if t.startswith("tu")), "Polyak $\\tau{=}0.005$")
+            rows.append([SCHEME_LABEL[scheme], obs, lr, sync] + [
+                f"{row(summary, s, method)['success']:.2f}" for s in ("train_like", "heldout_long")
+            ])  # fmt: skip
+    header = ["Reward", "Obs.", "Learning rate", "Target update", "Success 3--6", "Success 7--9"]
+    (out / "pilot_results.tex").write_text(latex_table(header, rows, "llllcc"), encoding="utf-8")
+
+
+LEARNER_SETTINGS = [("", "default (main experiment)"), ("lr3e-4", "lr $3{\\cdot}10^{-4}$"),
+                    ("sync1000", "hard sync 1000"), ("polyak", "Polyak $\\tau{=}0.005$")]  # fmt: skip
+SCHEMES = ("outcome", "naive", "ma")
+
+
+def table_sensitivity_rewards(
+    main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict[str, float | str], out: Path
+) -> None:
+    """The reward comparison (invariant encoder) under each learner setting: how often late
+    checkpoints collapse, and selected-checkpoint success at lengths 7--9."""
+    rows = []
+    for tag, text in LEARNER_SETTINGS:
+        source, prefix = (main_summary, "main") if not tag else (summary, "sensitivity")
+        names = [f"{s}_inv" + (f"_{tag}" if tag else "") for s in SCHEMES]
+        collapse = [f"{100 * stats[f'{prefix}/{m}/collapse_rate']:.0f}\\%" for m in names]
+        success = [fmt(row(source, "heldout_long", m), "success") for m in names]
+        rows.append([text, *collapse, *success])
+    header = ["Learner", "Collapsed: outcome", "naive", "MA", "Success 7--9: outcome", "naive", "MA"]
+    (out / "sensitivity_rewards.tex").write_text(latex_table(header, rows, "lcccccc"), encoding="utf-8")
+
+
+PROBE_METRICS = (
+    "think_rate", "q_think", "q_revise", "return_think", "return_revise", "q_gap", "true_gap", "aliased_rate",
+)  # fmt: skip
+
+
+def probe_macros(probe: pd.DataFrame) -> dict[str, float | str]:
+    """Mean over seeds (and t-interval) of the post-UNSAFE value probe (scripts/q_probe.py)."""
+    out: dict[str, float | str] = {}
+    for (method, which), sub in probe.groupby(["method", "checkpoint"]):
+        name = method + ("" if which == "best" else FINAL)
+        for metric in PROBE_METRICS:
+            low, high = t_interval(sub[metric].to_numpy(dtype=float))
+            out.update({f"probe/{name}/{metric}": float(sub[metric].mean()), f"probe/{name}/{metric}/lo": low,
+                        f"probe/{name}/{metric}/hi": high})  # fmt: skip
+    return out
+
+
+def success_range(summary: pd.DataFrame, key: str, pairs: list[tuple[str, str]]) -> dict[str, str]:
+    """Smallest and largest success (as rounded percentages) over (method, setting) pairs."""
+    values = [row(summary, s, m)["success"] for m, s in pairs]
+    return {f"{key}/min/pct": f"{100 * min(values):.0f}", f"{key}/max/pct": f"{100 * max(values):.0f}",
+            f"{key}/min": f"{min(values):.2f}", f"{key}/max": f"{max(values):.2f}"}  # fmt: skip
+
+
+# Ablation variants that keep the per-action cost and some payment for informative checks.
+CHECK_PAYING = ["no_cue_terms", "no_gap_term", "no_waste_penalty", "no_check_bonuses", "no_monitor_terms",
+                "cue_bonus_only"]  # fmt: skip
+LENGTHS = ("train_like", "heldout_long", "heldout_xlong")
+
 MACRO_HEADER = r"""% Generated by `python -m ultrarl.report`; do not edit by hand.
-% \val{exp/method/setting/metric} -> mean over seeds; \ci{...} -> mean [95% bootstrap CI].
+% \val{exp/method/setting/metric} -> mean over seeds; \ci{...} -> mean [95% Student-t interval over seeds].
 \makeatletter
 \newcommand{\val}[1]{\ifcsname ur@#1\endcsname\csname ur@#1\endcsname\else\errmessage{UltraRL: no result named #1}\fi}
 \newcommand{\ci}[1]{\val{#1}\,{\scriptsize[\val{#1/lo}, \val{#1/hi}]}}
@@ -497,13 +599,22 @@ MACRO_HEADER = r"""% Generated by `python -m ultrarl.report`; do not edit by han
 """
 
 
+def _number(value: float, digits: int) -> str:
+    """Rounded value with a real minus sign, and no "-0.00"."""
+    if np.isnan(value):
+        return "--"
+    text = f"{value:.{digits}f}"
+    if text.startswith("-"):
+        text = text[1:] if float(text) == 0.0 else "\\ensuremath{-}" + text[1:]
+    return text
+
+
 def _macro(key: str, value: float, digits: int = 2) -> str:
-    text = "--" if np.isnan(value) else f"{value:.{digits}f}"
-    return f"\\expandafter\\def\\csname ur@{key}\\endcsname{{{text}}}"
+    return f"\\expandafter\\def\\csname ur@{key}\\endcsname{{{_number(value, digits)}}}"
 
 
 def _pct_macro(key: str, value: float) -> str:
-    return f"\\expandafter\\def\\csname ur@{key}/pct\\endcsname{{{100 * value:.0f}\\%}}"
+    return f"\\expandafter\\def\\csname ur@{key}/pct\\endcsname{{{_number(100 * value, 0)}\\%}}"
 
 
 def write_macros(path: Path, summaries: dict[str, pd.DataFrame], extras: dict[str, float | str]) -> None:
@@ -547,6 +658,7 @@ def main(argv: list[str] | None = None) -> None:
     fig_learning_curves(curves, summary, figures, LEARNED)
     fig_selectivity(summary, figures)
     fig_churn(curves, figures)
+    fig_optimal_decisions(load_experiment(main_dir / "config.yaml").env, figures)
     table_main(summary, tables)
     table_main(summary, tables, suffix=FINAL, name="main_results_final")
     table_shifts(summary, tables)
@@ -558,24 +670,53 @@ def main(argv: list[str] | None = None) -> None:
     summaries = {"main": summary}
     extras = curve_stats(curves, per_seed)
     extras.update(comparison_macros(comparisons))
+    for method in ("cue_triggered", "optimal"):
+        extras.update(success_range(summary, f"main/{method}/lengths", [(method, s) for s in LENGTHS]))
     for name in ("ablations", "sensitivity"):
         path = results / name / "eval_summary.csv"
         if path.exists():
             summaries[name] = pd.read_csv(path)
-            table_ablation(summaries[name], tables, name=f"{name}_results")
+            shown = summaries[name]
+            if name == "sensitivity":  # the encoder comparison; the reward comparison has its own table
+                shown = shown[shown.method.str.startswith(("ma_abs", "ma_inv"))]
+            table_ablation(shown, tables, name=f"{name}_results")
     if "ablations" in summaries:
         table_ablation(summaries["ablations"], tables, name="ablations_results_final", suffix=FINAL)
         ablation_seeds = pd.read_csv(results / "ablations" / "eval_per_seed.csv")
         extras.update(curve_stats(load_curves(results / "ablations"), ablation_seeds, prefix="ablations"))
         variants = [m for m in summaries["ablations"].method.unique() if m != "ma_inv" and not m.endswith(FINAL)]
         pairs = [("ma_inv", m, s) for m in variants for s in ("train_like", "heldout_long", "heldout_xlong")]
+        pairs += [(f"ma_inv{FINAL}", f"{m}{FINAL}", s) for m in variants if m != "no_revise" for s in LENGTHS]
         extras.update(comparison_macros(key_numbers(ablation_seeds, pairs), prefix="abl"))
+        paying = [(m, "train_like") for m in CHECK_PAYING]
+        extras.update(success_range(summaries["ablations"], "ablations/check_paying/train_like", paying))
+        paying = [(m + FINAL, "train_like") for m in CHECK_PAYING]
+        extras.update(success_range(summaries["ablations"], f"ablations/check_paying{FINAL}/train_like", paying))
+        # variants against the main experiment's outcome-only agents (same evaluation episodes per seed)
+        own = ablation_seeds.method.isin(variants + [m + FINAL for m in variants])
+        joint = pd.concat([per_seed, ablation_seeds[own]], ignore_index=True)
+        pairs = [(m, "outcome_inv", s) for m in ("no_cue_terms", "no_monitor_terms") for s in LENGTHS]
+        pairs += [(f"no_cue_terms{FINAL}", f"outcome_inv{FINAL}", "heldout_xlong")]
+        extras.update(comparison_macros(key_numbers(joint, pairs)))
     if "sensitivity" in summaries:
         sensitivity_seeds = pd.read_csv(results / "sensitivity" / "eval_per_seed.csv")
         tags = sorted({m.removeprefix("ma_inv_") for m in summaries["sensitivity"].method if m.startswith("ma_inv_")})
         tags = [t for t in tags if not t.endswith(FINAL)]
         pairs = [(f"ma_inv_{t}", f"ma_abs_{t}", s) for t in tags for s in ("heldout_long", "heldout_xlong")]
+        methods = set(summaries["sensitivity"].method)
+        for t in tags:
+            for a, b in (("ma", "outcome"), ("ma", "naive"), ("naive", "outcome")):
+                if {f"{a}_inv_{t}", f"{b}_inv_{t}"} <= methods:
+                    pairs += [(f"{a}_inv_{t}", f"{b}_inv_{t}", s) for s in LENGTHS]
         extras.update(comparison_macros(key_numbers(sensitivity_seeds, pairs), prefix="sens"))
+        extras.update(curve_stats(load_curves(results / "sensitivity"), sensitivity_seeds, prefix="sensitivity"))
+        if {f"{s}_inv_{t}" for s in SCHEMES for t in tags} <= methods:
+            table_sensitivity_rewards(summary, summaries["sensitivity"], extras, tables)
+    if (results / "pilot").exists():
+        table_pilot(results / "pilot", tables)
+    probe_path = results / "q_probe.csv"
+    if probe_path.exists():
+        extras.update(probe_macros(pd.read_csv(probe_path)))
     coverage_path = results / "observation_coverage.csv"
     if coverage_path.exists():
         for _, c in pd.read_csv(coverage_path).iterrows():

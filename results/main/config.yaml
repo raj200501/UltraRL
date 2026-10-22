@@ -34,6 +34,8 @@ methods:
   - {name: cue_triggered, display_name: Cue-triggered, kind: heuristic}
   # margin 1 maximises success on training lengths (see scripts/tune_heuristic.py)
   - {name: budget_aware_1, display_name: Budget-aware, kind: heuristic}
+  # exact success-maximising planner; knows the chain length and the test environment's parameters
+  - {name: optimal, display_name: Optimal planner, kind: heuristic}
   - name: outcome_abs
     display_name: Outcome (abs)
     env_overrides: {reward_scheme: outcome_only, observation: absolute}

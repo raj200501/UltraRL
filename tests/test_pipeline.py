@@ -13,7 +13,7 @@ def test_smoke_pipeline_end_to_end(tmp_path, capsys):
     summary = pd.read_csv(out / "eval_summary.csv")
     per_seed = pd.read_csv(out / "eval_per_seed.csv")
     assert set(summary["setting"]) == {"train_like", "heldout_long"}
-    assert len(summary) == 2 * (11 + 6)  # settings x (methods + final-checkpoint variants)
+    assert len(summary) == 2 * (12 + 6)  # settings x (methods + final-checkpoint variants)
     assert per_seed["success"].between(0, 1).all()
     assert len(list((out / "checkpoints").glob("*.pt"))) == 2 * 6
     assert len(list((out / "curves").glob("*.csv"))) == 6

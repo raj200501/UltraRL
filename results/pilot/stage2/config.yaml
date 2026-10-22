@@ -1,0 +1,80 @@
+name: stability_pilot2
+env:
+  train_depth_range:
+  - 3
+  - 6
+  max_depth: 9
+  p_fault: 0.8
+  fault_profile: middle
+  fault_peak_weight: 5.0
+  cue_hit_rate: 0.85
+  cue_false_positive_rate: 0.15
+  budget_extra: 6
+train:
+  episodes: 20000
+  learning_rate: 0.001
+  hidden_size: 64
+  batch_size: 64
+  replay_size: 25000
+  warmup_steps: 500
+  target_update_interval: 200
+  epsilon_start: 0.5
+  epsilon_end: 0.02
+  epsilon_decay_fraction: 0.85
+  curve_interval: 1000
+  curve_episodes: 200
+seeds:
+- 0
+- 1
+methods:
+- name: ma_inv_tau005
+  env_overrides:
+    reward_scheme: monitorability_aware
+    observation: invariant
+  train_overrides:
+    target_tau: 0.005
+- name: ma_inv_tau005_lr3e4
+  env_overrides:
+    reward_scheme: monitorability_aware
+    observation: invariant
+  train_overrides:
+    target_tau: 0.005
+    learning_rate: 0.0003
+- name: ma_abs_tau005
+  env_overrides:
+    reward_scheme: monitorability_aware
+    observation: absolute
+  train_overrides:
+    target_tau: 0.005
+- name: ma_abs_tau005_lr3e4
+  env_overrides:
+    reward_scheme: monitorability_aware
+    observation: absolute
+  train_overrides:
+    target_tau: 0.005
+    learning_rate: 0.0003
+- name: outcome_inv_tau005
+  env_overrides:
+    reward_scheme: outcome_only
+    observation: invariant
+  train_overrides:
+    target_tau: 0.005
+- name: outcome_inv_tau005_lr3e4
+  env_overrides:
+    reward_scheme: outcome_only
+    observation: invariant
+  train_overrides:
+    target_tau: 0.005
+    learning_rate: 0.0003
+evaluation:
+  episodes: 500
+  curve_settings: &id001
+  - name: train_like
+    depth_range:
+    - 3
+    - 6
+  - name: heldout_long
+    depth_range:
+    - 7
+    - 9
+  settings: *id001

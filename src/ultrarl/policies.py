@@ -1,7 +1,9 @@
 """Hand-coded reference policies.
 
 Every heuristic acts only on :class:`ultrarl.env.Observable` (the same
-information available to the learned agents) plus the action mask.
+information available to the learned agents) plus the action mask. The
+``optimal`` reference (:mod:`ultrarl.optimal`) also knows the environment's
+parameters, so it needs the config it is evaluated under.
 """
 
 from __future__ import annotations
@@ -10,7 +12,9 @@ from collections.abc import Callable
 
 import numpy as np
 
+from ultrarl.config import EnvConfig
 from ultrarl.env import Action, Observable, VerifyStatus
+from ultrarl.optimal import optimal_policy
 
 Policy = Callable[[Observable, np.ndarray], int]
 
@@ -72,9 +76,11 @@ class RandomPolicy:
         return int(self.rng.choice(np.flatnonzero(mask)))
 
 
-def build_heuristic(name: str, seed: int) -> Policy:
+def build_heuristic(name: str, seed: int, env_config: EnvConfig | None = None) -> Policy:
     if name == "random":
         return RandomPolicy(seed)
+    if name == "optimal":
+        return optimal_policy(env_config or EnvConfig())
     table: dict[str, Policy] = {
         "always_think": always_think,
         "verify_every_step": verify_every_step,
@@ -88,7 +94,7 @@ def build_heuristic(name: str, seed: int) -> Policy:
         raise ValueError(f"unknown heuristic {name!r}") from None
 
 
-def heuristic_act(name: str, seed: int):
+def heuristic_act(name: str, seed: int, env_config: EnvConfig | None = None):
     """Adapter with the learned agents' ``(obs, observable, mask) -> action`` signature."""
-    policy = build_heuristic(name, seed)
+    policy = build_heuristic(name, seed, env_config)
     return lambda _obs, observable, mask: policy(observable, mask)

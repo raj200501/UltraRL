@@ -1,0 +1,20 @@
+\begin{tabular}{llllcc}
+\toprule
+Reward & Obs. & Learning rate & Target update & Success 3--6 & Success 7--9 \\
+\midrule
+Monitorability-aware & abs & $10^{-3}$ & hard, 200 & 0.64 & 0.29 \\
+Monitorability-aware & abs & $10^{-3}$ & hard, 1000 & 0.66 & 0.24 \\
+Monitorability-aware & abs & $3{\cdot}10^{-4}$ & hard, 200 & 0.23 & 0.01 \\
+Monitorability-aware & abs & $3{\cdot}10^{-4}$ & hard, 1000 & 0.44 & 0.27 \\
+Monitorability-aware & inv & $10^{-3}$ & hard, 200 & 0.88 & 0.85 \\
+Monitorability-aware & inv & $10^{-3}$ & hard, 1000 & 0.39 & 0.27 \\
+Monitorability-aware & inv & $3{\cdot}10^{-4}$ & hard, 200 & 0.77 & 0.68 \\
+Monitorability-aware & inv & $3{\cdot}10^{-4}$ & hard, 1000 & 0.48 & 0.43 \\
+Monitorability-aware & inv & $10^{-3}$ & Polyak $\tau{=}0.005$ & 0.89 & 0.87 \\
+Monitorability-aware & inv & $3{\cdot}10^{-4}$ & Polyak $\tau{=}0.005$ & 0.89 & 0.82 \\
+Monitorability-aware & abs & $10^{-3}$ & Polyak $\tau{=}0.005$ & 0.74 & 0.29 \\
+Monitorability-aware & abs & $3{\cdot}10^{-4}$ & Polyak $\tau{=}0.005$ & 0.52 & 0.15 \\
+Outcome-only & inv & $10^{-3}$ & Polyak $\tau{=}0.005$ & 0.79 & 0.75 \\
+Outcome-only & inv & $3{\cdot}10^{-4}$ & Polyak $\tau{=}0.005$ & 0.40 & 0.31 \\
+\bottomrule
+\end{tabular}

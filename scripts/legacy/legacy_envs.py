@@ -1,4 +1,4 @@
-# Original environment implementation, vendored verbatim from commit 81ec8cb (src/envs.py)
+# Original environment implementation, vendored from commit 81ec8cb (src/envs.py) and reformatted only
 # so that scripts/check_legacy_equivalence.py works without git history. Not used by ultrarl.
 # ruff: noqa
 from __future__ import annotations

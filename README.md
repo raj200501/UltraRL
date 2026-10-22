@@ -40,6 +40,7 @@ The monitorability-aware reward is a toy proxy for keeping a trajectory locally 
 | Never check (Always THINK) | 0.20 [0.19, 0.21] | 0.20 [0.19, 0.22] | 0.20 [0.18, 0.21] |
 | Cue-triggered heuristic | 0.87 [0.86, 0.89] | 0.88 [0.87, 0.90] | 0.85 [0.84, 0.86] |
 | Budget-aware heuristic (tuned on 3–6) | 0.97 [0.96, 0.97] | 0.82 [0.81, 0.84] | 0.68 [0.66, 0.70] |
+| Exact planner (knows the chain length; reference, not a baseline) | 0.99 [0.99, 0.99] | 0.94 [0.93, 0.94] | 0.90 [0.89, 0.92] |
 | Outcome-only, absolute obs. | 0.34 [0.28, 0.40] | 0.16 [0.08, 0.23] | 0.05 [0.00, 0.11] |
 | Monitorability-aware, absolute obs. | 0.76 [0.72, 0.80] | 0.31 [0.20, 0.41] | 0.03 [0.00, 0.07] |
 | Monitorability-aware, absolute obs. without position features | 0.65 [0.56, 0.74] | 0.35 [0.26, 0.43] | 0.14 [0.09, 0.19] |
@@ -50,17 +51,19 @@ The monitorability-aware reward is a toy proxy for keeping a trajectory locally 
 | ↳ fault bonus paid on repair, selected checkpoint | 0.89 [0.88, 0.91] | 0.79 [0.71, 0.87] | 0.64 [0.52, 0.75] |
 | ↳ fault bonus paid on repair, last checkpoint | 0.85 [0.84, 0.87] | 0.75 [0.67, 0.83] | 0.64 [0.55, 0.74] |
 
-1. **Paying substantially for checks helps agents retain checking, and the cue terms keep it frugal.**
-   - With invariant observations, 85% [76, 93] of outcome-only agents' late checkpoints collapse to low success, and 60% of all late checkpoints have nearly stopped checking. With a token payment for checks (naive process), 62% [51, 73] collapse and 17% have nearly stopped checking. With substantial payments (monitorability-aware), 21% [10, 32] collapse and none has stopped checking.
-   - Ablations show that *any* term paying for informative checks recovers about 85–90% of the training-length gain.
-   - On long chains, the cue terms matter. Without them, the unchecked-gap term rewards indiscriminate checking, agents run out of budget, and at lengths 10–14 the agents do worse than outcome-only.
+1. **Paying for checks helps agents keep checking; on long chains, how checks are paid matters.**
+   - With invariant observations, 85% [76, 93] of outcome-only agents' late checkpoints collapse to low success, and 60% of all late checkpoints have nearly stopped checking. A token payment for checks (naive process) helps partially: 62% [51, 73] collapse and 17% have nearly stopped checking. With substantial payments (monitorability-aware), 21% [10, 32] collapse and none has stopped checking.
+   - The contrast holds under three other DQN settings (5 seeds each): outcome-only agents collapse in 81–96% of late checkpoints, monitorability-aware agents in 17–19%.
+   - In ablations, every variant that keeps the per-action cost and pays for informative checks recovers about 85–90% of the training-length gain.
+   - On long chains, the unchecked-gap term drives indiscriminate checking unless the cue terms offset it. Removing only the cue terms costs 0.22 at lengths 7–9 and 0.33 at 10–14 against the full reward; removing the cue and gap terms together costs less. These are selected-checkpoint results; at the last checkpoint the ablation ranking changes.
 2. **Length generalization depends mainly on the observation encoder.**
-   - The original encoder's features depend on chain length. 100% of held-out observations never occur in a large sample of training-length rollouts, and every reward ends up *below* never-checking on lengths 10–14, mostly by committing before executing a single step.
-   - A length-invariant encoder (2–5% novel) keeps 0.86 at lengths 7–9, within 0.02 [−0.05, 0.01] of a hand-coded checker.
+   - The original encoder's features depend on chain length. In rollouts of the hand-coded policies, 100% of held-out observations never occur in a large sample of training-length rollouts, and every reward ends up *below* never-checking on lengths 10–14, mostly by committing before executing a single step.
+   - A length-invariant encoder (2–5% novel) keeps 0.86 at lengths 7–9: a difference of −0.02 [−0.05, 0.01] from a hand-coded checker, and below an exact planner that knows the chain length (0.94).
    - Removing only the two position features is not enough (98% still novel; 0.14 at 10–14). The remaining length-normalised features also change meaning with length.
 3. **Every reward shows a "detect but don't repair" failure; paying at the repair step removes it.**
    - Late checkpoints that catch faults and then fail to fix them occur under outcome-only (15%), naive (29%) and monitorability-aware (21%) rewards. This is a learning failure rather than reward hacking: repairing is always worth more than any detection bonus.
-   - Paying the fault bonus when the repair happens, instead of when the fault is detected, cuts it to 1% [0, 2]. Last-checkpoint success then rises by +0.12 at lengths 7–9 (p = 0.016), at the cost of slightly lower peak success.
+   - The learned values show why. Right after a caught fault, the agent's Q-values for repairing and for continuing differ by about 0.02, while their true returns differ by about 2.1. Continuing leads to observations that also occur when nothing is wrong (97% of them), so its value is plausibly pulled toward on-track values.
+   - Paying the fault bonus when the repair happens, instead of when the fault is detected, widens the learned gap and cuts the failure to 1% [0, 2]. Last-checkpoint success then rises by +0.12 at lengths 7–9 (p = 0.016, exploratory). Selected-checkpoint success is not better, and possibly worse (−0.07 at 7–9 and −0.10 at 10–14, not resolved).
 4. **Training is unstable, so we report both checkpoints.** Greedy policies swing between solutions throughout training. Selected and last checkpoints are both reported; selection never sees held-out lengths.
 
 ### A correction to the earlier version
@@ -75,6 +78,7 @@ src/ultrarl/
   rewards.py        outcome-only / naive process / monitorability-aware rewards
   observations.py   absolute, absolute-without-position, invariant, memory and slack-ratio encoders
   policies.py       hand-coded reference policies (observable information only)
+  optimal.py        exact dynamic-programming planner: best success without re-checking earlier steps
   dqn.py            masked Double DQN with a numpy replay buffer
   train.py          one training run: learning curve + selected/last checkpoints
   rollout.py        evaluation rollouts on independent RNG streams, metric aggregation
@@ -82,10 +86,10 @@ src/ultrarl/
   stats.py          t-intervals, paired differences, exact sign-flip tests, Holm correction
   report.py         every figure, table and generated number in the paper, from results/
 configs/            main, ablations, sensitivity, followups, encoders
-results/<exp>/      checkpoints, learning curves, per-seed and summary CSVs
-scripts/            heuristic tuning, observation coverage, legacy equivalence (vendored original env), checkpoint comparison
+results/<exp>/      checkpoints, learning curves, per-seed and summary CSVs (results/pilot: archived hyperparameter pilot)
+scripts/            heuristic tuning, observation coverage, Q-value probe, legacy equivalence (vendored original env), checkpoint comparison
 paper/              LaTeX source; numbers.tex is generated by ultrarl.report
-tests/              92 tests: dynamics, rewards, metrics, seeding, DQN target, determinism, resume safety, configs, report
+tests/              99 tests: dynamics, rewards, metrics, seeding, DQN target, optimal planner, determinism, resume safety, configs, report
 ```
 
 ## Reproducing
@@ -94,12 +98,13 @@ tests/              92 tests: dynamics, rewards, metrics, seeding, DQN target, d
 pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU is enough
 pip install -e ".[dev]"            # requirements-lock.txt pins the exact versions behind results/
 
-make test          # 92 tests (~1 min)
+make test          # 99 tests (~1 min)
 make smoke         # whole pipeline end to end on a tiny budget (~20 s), in results/smoke
+make analyses      # recompute observation coverage and the Q-value probe from saved checkpoints (~4 min)
 make report        # regenerate all figures, tables and paper numbers from results/ (no training)
 make paper         # ... and rebuild paper/main.pdf (needs a LaTeX installation)
 make equivalence   # rewritten environment vs. the vendored original implementation
-make reproduce     # retrain all 230 runs from scratch into results_repro/ (~4 h, 4 CPU cores)
+make reproduce     # retrain all 260 runs from scratch into results_repro/ (~4.5 h, 4 CPU cores)
                    # and check every checkpoint bitwise (requires the pinned versions)
 ```
 
@@ -109,8 +114,8 @@ The per-experiment targets (`make main`, `make ablations`, …) resume into `res
 
 - **Verified rewrite.** The environment was rewritten for clarity. `make equivalence` compares it with the original implementation (vendored in `scripts/legacy/`) step by step: 86,112 steps, 0 differences in dynamics, masks, rewards or observations.
 - **Independent streams, honest held-out sets.** Training, validation and evaluation episodes come from independent RNG streams, and the tests check which stream `evaluate()` uses. Checkpoint selection may only use the training distribution; the config loader rejects anything else. Training-length evaluation is in-distribution by design; only the held-out lengths are genuinely unseen.
-- **Fair baselines.** Reference policies see only what the agents could observe, plus the action costs. The budget-aware heuristic's margin is tuned on training lengths (`scripts/tune_heuristic.py`). The DQN hyperparameters are those of the project's first version, kept after a small pilot and re-checked under three alternatives.
-- **Numbers come from code.** Every experimental result in the paper is a macro from `paper/numbers.tex`, which `ultrarl.report` generates from `results/`; a reference to a missing result is a LaTeX error. (Figures quoted about the earlier version and fixed settings such as hyperparameters are written by hand.) CI regenerates the tables and numbers and fails if they differ from the committed ones.
+- **Fair baselines and an exact reference.** Hand-coded reference policies see only what the agents could observe, plus the action costs. The budget-aware heuristic's margin is tuned on training lengths (`scripts/tune_heuristic.py`). The exact planner (`src/ultrarl/optimal.py`) also knows the chain length and the environment's parameters. It is optimal among policies that never go back to check an earlier step, which costs at least two extra units; tests check that it reaches its planned success in simulation. The DQN hyperparameters are those of the project's first version, kept after a small two-seed pilot (archived in `results/pilot/`) and re-checked under three alternatives.
+- **Numbers come from code.** Every number in the paper that is computed from `results/` is a macro from `paper/numbers.tex`, which `ultrarl.report` generates; a reference to a missing result is a LaTeX error. Figures quoted about the earlier version, fixed settings such as hyperparameters, the output of `make equivalence`, and the numbers in this README are written by hand. CI regenerates the tables and numbers and fails if they differ from the committed ones.
 
 ## How this project was made
 
