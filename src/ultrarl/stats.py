@@ -5,8 +5,8 @@ seeds a plain percentile bootstrap is noticeably narrower than a t-interval (it
 uses the 1/n variance and normal quantiles), so it undercovers even for normal
 data; t-intervals are the standard small-sample choice. Paired comparisons
 (methods evaluated on identical episodes for each seed) also report the number
-of seeds favouring each side and an exact sign-flip permutation p-value; a
-pre-declared family of primary comparisons is Holm-adjusted.
+of seeds favouring each side and an exact sign-flip permutation p-value; the
+family of headline comparisons (chosen after the results) is Holm-adjusted.
 """
 
 from __future__ import annotations
@@ -16,6 +16,9 @@ import itertools
 import numpy as np
 import pandas as pd
 from scipy import stats as sps
+
+# Suffix marking last-checkpoint rows (e.g. ``ma_inv@final``) in evaluation outputs.
+FINAL_SUFFIX = "@final"
 
 # Metrics that are probabilities; their intervals are clipped to [0, 1].
 PROBABILITY_METRICS = {

@@ -86,3 +86,9 @@ def build_heuristic(name: str, seed: int) -> Policy:
         return table[name]
     except KeyError:
         raise ValueError(f"unknown heuristic {name!r}") from None
+
+
+def heuristic_act(name: str, seed: int):
+    """Adapter with the learned agents' ``(obs, observable, mask) -> action`` signature."""
+    policy = build_heuristic(name, seed)
+    return lambda _obs, observable, mask: policy(observable, mask)

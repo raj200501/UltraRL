@@ -23,7 +23,7 @@ Everything is exact: where every fault is, whether it was caught, whether it was
 
 - *outcome-only*: success or failure, plus a small per-action cost;
 - *naive process*: adds small bonuses for correct steps and for first-time informative checks;
-- *monitorability-aware*: the original study's name for a reward that pays for informative checks, especially checks of cued steps, and penalises long unchecked stretches.
+- *monitorability-aware*: the name used in this project's first version for a reward that pays for informative checks, especially checks of cued steps, and penalises long unchecked stretches.
 
 The monitorability-aware reward is a toy proxy for keeping a trajectory locally diagnosable. There is no monitor in the testbed.
 
@@ -32,7 +32,7 @@ The monitorability-aware reward is a toy proxy for keeping a trajectory locally 
 ## Findings
 
 - **Setup:** 10 seeds per condition, Double DQN agents with about 5k parameters, chains up to 2.3× longer than in training.
-- **Statistics:** 95% Student-t intervals over seeds. Comparisons are paired by seed and use exact sign-flip tests; a pre-declared family of headline comparisons is Holm-corrected.
+- **Statistics:** 95% Student-t intervals over seeds. Comparisons are paired by seed and use exact sign-flip tests. Six headline comparisons, chosen after seeing the results, are Holm-corrected; other p-values are exploratory.
 - **Checkpoints:** learned agents use the checkpoint selected on *training-length* validation. Main results are also reported for the last checkpoint.
 
 | Success rate (selected checkpoints unless noted) | train lengths 3–6 | held-out 7–9 | held-out 10–14 |
@@ -50,8 +50,8 @@ The monitorability-aware reward is a toy proxy for keeping a trajectory locally 
 | ↳ fault bonus paid on repair, selected checkpoint | 0.89 [0.88, 0.91] | 0.79 [0.71, 0.87] | 0.64 [0.52, 0.75] |
 | ↳ fault bonus paid on repair, last checkpoint | 0.85 [0.84, 0.87] | 0.75 [0.67, 0.83] | 0.64 [0.55, 0.74] |
 
-1. **Rewarding checks helps agents acquire and retain checking, and the cue terms keep it frugal.**
-   - With invariant observations, 85% [76, 93] of outcome-only agents' late checkpoints collapse to low success, mostly by abandoning checking. Under the monitorability-aware reward the figure is 21% [10, 32].
+1. **Paying substantially for checks helps agents retain checking, and the cue terms keep it frugal.**
+   - With invariant observations, 85% [76, 93] of outcome-only agents' late checkpoints collapse to low success, and 60% of all late checkpoints have nearly stopped checking. With a token payment for checks (naive process), 62% [51, 73] collapse and 17% have nearly stopped checking. With substantial payments (monitorability-aware), 21% [10, 32] collapse and none has stopped checking.
    - Ablations show that *any* term paying for informative checks recovers about 85–90% of the training-length gain.
    - On long chains, the cue terms matter. Without them, the unchecked-gap term rewards indiscriminate checking, agents run out of budget, and at lengths 10–14 the agents do worse than outcome-only.
 2. **Length generalization depends mainly on the observation encoder.**
@@ -109,8 +109,12 @@ The per-experiment targets (`make main`, `make ablations`, …) resume into `res
 
 - **Verified rewrite.** The environment was rewritten for clarity. `make equivalence` compares it with the original implementation (vendored in `scripts/legacy/`) step by step: 86,112 steps, 0 differences in dynamics, masks, rewards or observations.
 - **Independent streams, honest held-out sets.** Training, validation and evaluation episodes come from independent RNG streams, and the tests check which stream `evaluate()` uses. Checkpoint selection may only use the training distribution; the config loader rejects anything else. Training-length evaluation is in-distribution by design; only the held-out lengths are genuinely unseen.
-- **Fair baselines.** Reference policies see only what the agents could observe, plus the action costs. The budget-aware heuristic's margin is tuned on training lengths (`scripts/tune_heuristic.py`). The DQN hyperparameters are the original study's, kept after a small pilot and re-checked under three alternatives.
+- **Fair baselines.** Reference policies see only what the agents could observe, plus the action costs. The budget-aware heuristic's margin is tuned on training lengths (`scripts/tune_heuristic.py`). The DQN hyperparameters are those of the project's first version, kept after a small pilot and re-checked under three alternatives.
 - **Numbers come from code.** Every experimental result in the paper is a macro from `paper/numbers.tex`, which `ultrarl.report` generates from `results/`; a reference to a missing result is a LaTeX error. (Figures quoted about the earlier version and fixed settings such as hyperparameters are written by hand.) CI regenerates the tables and numbers and fails if they differ from the committed ones.
+
+## How this project was made
+
+This revision of the project, including the controlled re-run, the follow-up experiments, the analysis code and the paper, was produced with substantial help from Claude Code (an AI coding assistant), under my direction: implementation, running experiments, statistical analysis, drafting the paper, and repeated automated multi-agent reviews of the code and claims (the "audit round" commits respond to those reviews). I chose the research questions, reviewed the results and am responsible for every claim.
 
 ## Citation
 

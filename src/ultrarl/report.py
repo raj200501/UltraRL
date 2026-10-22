@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from ultrarl.stats import holm, paired_difference, t_interval  # noqa: E402
+from ultrarl.stats import FINAL_SUFFIX, holm, paired_difference, t_interval  # noqa: E402
 
 # Categorical slots in fixed order (one hue per reward scheme); observation
 # encoder is a secondary encoding (line style / hatch), heuristics are neutral.
@@ -212,7 +212,7 @@ def display(summary: pd.DataFrame, method: str) -> str:
     return summary.loc[summary.method == method, "display_name"].iloc[0]
 
 
-FINAL = "@final"
+FINAL = FINAL_SUFFIX
 
 
 def table_main(summary: pd.DataFrame, out: Path, suffix: str = "", name: str = "main_results") -> None:
@@ -276,8 +276,9 @@ def table_ablation(summary: pd.DataFrame, out: Path, name: str = "ablation_resul
     (out / f"{name}.tex").write_text(latex_table(header, rows, "lccccc"), encoding="utf-8")
 
 
-COLLAPSE_THRESHOLD = 0.35  # greedy success at or below what never verifying achieves (~0.2-0.3)
-NEVER_CHECK_DETECTION = 0.2  # collapsed checkpoints below this detection rate have stopped checking
+COLLAPSE_THRESHOLD = 0.35  # a margin above never-check success (Always THINK: ~0.20 on training lengths)
+NEVER_CHECK_DETECTION = 0.2  # collapsed checkpoints below this detection rate have (nearly) stopped checking
+NO_REPAIR_DETECTION = 0.5  # collapsed checkpoints at or above this detection rate still check but fail to repair
 BURN_IN = 5000
 
 
@@ -301,7 +302,7 @@ def curve_stats(
         )
         sub = sub.assign(
             nevercheck=sub.collapsed & (sub.detect < NEVER_CHECK_DETECTION),
-            norepair=sub.collapsed & (sub.detect >= 0.5),
+            norepair=sub.collapsed & (sub.detect >= NO_REPAIR_DETECTION),
         )
         for name in ("collapsed", "nevercheck", "norepair"):
             key = {
@@ -358,14 +359,16 @@ COMPARISONS = [
 ]
 
 
-# Pre-declared primary comparisons (the paper's headline claims); their p-values are
-# Holm-adjusted as one family. All other comparisons are reported unadjusted.
+# The comparisons behind the paper's headline claims, chosen after the results were
+# known (not pre-registered); their p-values are Holm-adjusted as one family. All
+# other comparisons are exploratory and reported unadjusted.
 PRIMARY = [
     ("ma_inv", "ma_abs", "heldout_long"),
     ("ma_inv", "ma_abs", "heldout_xlong"),
     ("ma_abs", "outcome_abs", "train_like"),
     ("ma_inv", "outcome_inv", "train_like"),
     ("ma_inv", "outcome_inv", "heldout_long"),
+    ("ma_inv", "outcome_inv", "heldout_xlong"),
 ]
 
 

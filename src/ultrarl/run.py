@@ -34,14 +34,15 @@ import torch
 
 from ultrarl.config import ExperimentConfig, Method, load_experiment
 from ultrarl.dqn import DQNAgent
-from ultrarl.policies import build_heuristic
+from ultrarl.policies import heuristic_act
 from ultrarl.rollout import evaluate
-from ultrarl.stats import summarize
+from ultrarl.stats import FINAL_SUFFIX, summarize
 from ultrarl.train import checkpoint_path, curve_path, greedy_act, train_run
 
+# ``return`` stays in eval_per_seed.csv but is not summarised: it is measured under
+# each method's own training reward, so it is not comparable across methods.
 SUMMARY_METRICS = [
     "success",
-    "return",
     "cost_adjusted_accuracy",
     "num_actions",
     "verify_count",
@@ -58,9 +59,6 @@ SUMMARY_METRICS = [
     "verify_rate_cue0",
     "verify_rate_cue1",
 ]
-
-
-FINAL_SUFFIX = "@final"
 
 
 def _train_job(job: tuple[str, bool, str, int, str]) -> dict[str, Any]:
@@ -87,12 +85,7 @@ def _eval_job(job: tuple[str, bool, str, int, str]) -> list[dict[str, Any]]:
             agent, _ = DQNAgent.load(path)
             variants.append((method.name + suffix, method.display_name + suffix, lambda a=agent: greedy_act(a)))
     else:
-
-        def make_act():
-            policy = build_heuristic(method.name, seed)
-            return lambda _obs, observable, mask: policy(observable, mask)
-
-        variants.append((method.name, method.display_name, make_act))
+        variants.append((method.name, method.display_name, lambda: heuristic_act(method.name, seed)))
 
     rows = []
     for name, display_name, make_act in variants:
@@ -249,7 +242,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--smoke", action="store_true", help="apply the config's tiny 'smoke' overrides")
-    parser.add_argument("--stage", choices=["train", "eval", "all"], default="all")
+    parser.add_argument(
+        "--stage",
+        choices=["train", "eval", "all", "summarize"],
+        default="all",
+        help="'summarize' recomputes eval_summary.csv from eval_per_seed.csv without re-evaluating",
+    )
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--retrain", action="store_true", help="retrain even if checkpoints exist")
     args = parser.parse_args(argv)
@@ -263,6 +261,11 @@ def main(argv: list[str] | None = None) -> None:
         train_all(exp, args.config, args.smoke, out, args.workers, args.retrain)
     if args.stage in ("eval", "all"):
         evaluate_all(exp, args.config, args.smoke, out, args.workers)
+    if args.stage == "summarize":
+        per_seed = pd.read_csv(out / "eval_per_seed.csv")
+        summarize(per_seed, ["setting", "method", "display_name"], SUMMARY_METRICS).to_csv(
+            out / "eval_summary.csv", index=False
+        )
     _record_provenance(out, args.config, args.smoke)
     print(f"[run] {exp.name} finished in {time.time() - start:.0f}s -> {out}", flush=True)
 

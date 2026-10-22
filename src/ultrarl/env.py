@@ -221,7 +221,8 @@ class ChainEnv:
 
     @property
     def unchecked_gap(self) -> int:
-        """Steps executed since the most recently checked step index."""
+        """Steps between the current index and the highest checked index (0 if the
+        agent has revised back to or below it, even if earlier steps are unchecked)."""
         return max(0, self.step_idx - max(self.checked, default=0))
 
     def action_mask(self) -> np.ndarray:
