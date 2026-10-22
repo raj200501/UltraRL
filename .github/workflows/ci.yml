@@ -41,7 +41,8 @@ jobs:
         if: matrix.deps == 'locked'
         run: |
           python -m ultrarl.report --results results --paper paper
-          git diff --exit-code -- paper/numbers.tex paper/tables paper/figures results
+          git diff --exit-code -- paper/numbers.tex paper/tables 'paper/figures/*.pdf' results
+          python scripts/compare_pngs.py paper/figures
       - name: Rewritten environment matches the original implementation
         if: matrix.deps == 'locked'
         run: python scripts/check_legacy_equivalence.py
