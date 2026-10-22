@@ -6,7 +6,7 @@
 
 Raj Kashikar · [paper (PDF)](paper/main.pdf)
 
-> **In one sentence:** in an exact testbed for budgeted self-verification, whether a small RL agent's checking survives on longer problems is decided mainly by whether its observations change meaning with length, and its characteristic failure (catching faults without fixing them) comes from an observation that hides whether a correction is still pending, more than from the reward.
+> **In one sentence:** in an exact testbed for budgeted self-verification, a small RL agent's checking generalizes to longer problems only if its observations mean the same thing at every length, and its habit of catching faults without fixing them comes from an observation that hides whether a fix is still pending.
 
 Reasoning models increasingly check and revise their own steps. This project studies a narrow version of that behaviour that can be measured exactly: *when an agent has a fixed budget, does it learn which steps are worth checking, and does what it learns transfer to longer problems?*
 
@@ -61,26 +61,30 @@ Neither records whether a caught fault has been repaired; one follow-up adds tha
 | ↳ with a repair-pending bit, last checkpoint | 0.92 [0.91, 0.94] | 0.89 [0.87, 0.91] | 0.83 [0.76, 0.89] |
 | Outcome-only, invariant obs. + repair-pending bit | 0.90 [0.89, 0.92] | 0.79 [0.71, 0.87] | 0.66 [0.53, 0.78] |
 | ↳ last checkpoint | 0.62 [0.47, 0.77] | 0.37 [0.28, 0.46] | 0.27 [0.22, 0.33] |
+| Monitorability-aware, invariant obs. + last 8 actions | 0.97 [0.96, 0.98] | 0.78 [0.74, 0.81] | 0.41 [0.30, 0.51] |
+| Outcome-only, invariant obs. + last 8 actions | 0.97 [0.97, 0.97] | 0.69 [0.65, 0.74] | 0.22 [0.15, 0.29] |
 
 1. **Length generalization depends mainly on the observation encoder.**
    - The original encoder's features depend on chain length. In rollouts of the hand-coded policies, 100% of held-out observations never occur exactly in a large sample of training-length rollouts, and every reward ends up *below* never-checking on lengths 10–14, mostly by committing before executing a single step.
    - A length-invariant encoder (2–5% novel) keeps 0.86 at lengths 7–9: a difference of −0.02 [−0.05, 0.01] from a hand-coded checker, and below an exact planner that knows the chain length (0.94).
    - Removing only the two position features is not enough (98% still novel; 0.14 at 10–14). The remaining length-normalised features also change meaning with length.
-2. **Every reward shows a "detect but don't repair" failure, and it comes from missing state.**
+2. **Every reward shows a "detect but don't repair" failure; one bit of missing state removes it.**
    - Late checkpoints that catch faults and then fail to fix them occur under outcome-only (15%), naive (29%) and monitorability-aware (21%) rewards. This is a learning failure rather than reward hacking: repairing is always worth more than any detection bonus.
-   - A value probe shows that, measured against the agents' general value offset, repairing is valued within 0.4 of its true return after a caught fault but continuing is overrated by 1.6–1.9 under every reward. The observation does not record whether a caught fault is still unrepaired, so continuing past it looks like being on track.
-   - Adding one bit that records exactly that removes the failure under all three rewards (0% of late checkpoints) and makes the greedy choice stable. Under the monitorability-aware reward the last checkpoint then reaches 0.89 at lengths 7–9, against 0.63 without the bit (p = 0.002). Selected checkpoints on 10–14 get worse (−0.14 [−0.26, −0.01]), because the agents now check many more un-cued steps.
+   - The observation does not record whether a caught fault is still unrepaired, so continuing past it looks like being on track.
+   - Adding one bit that records exactly that removes the failure under all three rewards (0% of late checkpoints) and makes the greedy choice stable. Under the monitorability-aware reward the last checkpoint then reaches 0.89 at lengths 7–9 and 0.83 at 10–14 (without the bit: 0.63 and 0.52), level with the cue-triggered heuristic. Selected checkpoints on 10–14 look worse (−0.14 [−0.26, −0.01]), a selection artifact: with the bit, training-length validation saturates and selection picks checkpoints that over-check.
+   - Agents shown their last 8 actions instead learn this state themselves: no collapse under any reward and 0.97 training-length success. But the window also changes with length (42% of observations at 10–14 never occur in training), and they generalize poorly (0.22–0.41 at 10–14).
    - Paying the fault bonus at the repair step instead of at detection also removes the collapse among late checkpoints (1% [0, 2]), but we tried that only with the monitorability-aware reward.
-3. **Paying for checks helps agents find checking sooner and keep it, but partly compensates for the missing bit.**
-   - With invariant observations, 85% [76, 93] of outcome-only agents' late checkpoints collapse to low success, and 60% of all late checkpoints have nearly stopped checking. Monitorability-aware agents first exceed 0.5 success by a median of episode 3,500 (outcome-only: 15,000), and only 24% of their later checkpoints collapse (outcome-only: 66%). The naive process reward (a step-correctness bonus plus a token check payment) is in between.
+3. **Paying for checks helps agents find checking sooner and keep it, but mostly compensates for missing state.**
+   - With invariant observations, 85% [76, 93] of outcome-only agents' late checkpoints (those after episode 5,000) collapse to low success; most of these still check but almost never catch a fault (the ones we inspected check only the final step). Under the monitorability-aware reward, 21% [10, 32] collapse.
+   - Monitorability-aware agents first exceed 0.5 success by a median of episode 3,500 (outcome-only: 15,000). Of the checkpoints after that point, 24% collapse (outcome-only: 66%). The naive process reward (a step-correctness bonus plus a token check payment) is in between.
    - The contrast holds under three other DQN settings and with twice the training (5 seeds each): outcome-only agents collapse in 81–96% of late checkpoints, monitorability-aware agents in 17–22%.
-   - With the repair-pending bit, outcome-only collapse falls to 20%. The check payment still matters there: outcome-only agents' last checkpoints generalize much worse (0.37 vs 0.89 at 7–9).
+   - With the repair-pending bit, outcome-only collapse falls to 20%, and with the action history to 0%. With the bit, the two rewards are indistinguishable at selected checkpoints on held-out lengths; the check payment still shows up at the last checkpoint (0.37 vs 0.89 at 7–9).
    - In ablations, every variant that keeps the per-action cost and pays for informative checks reaches 0.88–0.89 on training lengths, 84–93% of the full reward's gain over outcome-only. On long chains, the unchecked-gap term drives indiscriminate checking unless the cue terms offset it (selected checkpoints; at the last checkpoint the ablation ranking changes).
 4. **Training is unstable, so we report both checkpoints.** Greedy policies swing between solutions throughout training. Selected and last checkpoints are both reported; selection never sees held-out lengths.
 
 ### A correction to the earlier version
 
-The first version of this repository concluded that monitorability-aware RL "remains brittle under longer held-out chains" (success 0.60 → 0.11). A controlled re-run reversed that: the failure came mostly from length-dependent observation features, compounded by under-training and last-checkpoint evaluation. The earlier pipeline also had a localization metric that gave credit for faults nobody checked; the never-check policy scored 0.07 on it. It also reused training seeds for one seed's evaluation episodes, which was harmless here because policies cannot tell episodes apart, but was still a protocol error. Appendix E of the paper lists every change.
+The first version of this repository concluded that monitorability-aware RL "remains brittle under longer held-out chains" (success 0.60 → 0.11). A controlled re-run reversed that: the failure came mostly from length-dependent observation features, compounded by under-training and last-checkpoint evaluation. The earlier pipeline also had a localization metric that gave credit for faults nobody checked; the never-check policy scored 0.07 on it. It also reused training seeds for one seed's evaluation episodes, which was harmless here because policies cannot tell episodes apart, but was still a protocol error. The paper's appendix "Changes from the Earlier Version" lists every change.
 
 ## Repository layout
 
@@ -108,11 +112,15 @@ tests/              116 tests: dynamics, rewards, metrics, seeding, DQN target, 
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU is enough
-pip install -e ".[dev]"            # requirements-lock.txt pins the exact versions behind results/
+pip install -e ".[dev]"
+
+# for bitwise reproduction (make reproduce): Python 3.13 and the exact versions behind results/
+pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-lock.txt && pip install -e . --no-deps
 
 make test          # 116 tests (~2 min)
 make smoke         # whole pipeline end to end on a tiny budget (~30 s), in results/smoke
-make analyses      # recompute observation coverage and the Q-value probe from saved checkpoints (~4 min)
+make analyses      # recompute observation coverage and the Q-value probe from saved checkpoints (~8 min)
 make report        # regenerate all figures, tables and paper numbers from results/ (no training)
 make paper         # ... and rebuild paper/main.pdf (needs a LaTeX installation)
 make equivalence   # rewritten environment vs. the vendored original implementation

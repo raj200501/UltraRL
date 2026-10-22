@@ -18,7 +18,7 @@ smoke:  ## ~30 s end-to-end run of the whole pipeline in a scratch directory
 	rm -rf results/smoke
 	$(PYTHON) -m ultrarl.run --config configs/main.yaml --out results/smoke --smoke --workers $(WORKERS)
 
-analyses:  ## observation coverage and the post-UNSAFE value probe, from saved checkpoints (~4 min)
+analyses:  ## observation coverage and the post-UNSAFE value probe, from saved checkpoints (~8 min)
 	$(PYTHON) scripts/observation_coverage.py
 	$(PYTHON) scripts/q_probe.py
 

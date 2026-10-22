@@ -27,7 +27,7 @@ def _fake_experiment(root: Path, name: str, rng: np.random.Generator, seeds=(0, 
         for method, display in names:
             for seed in seeds:
                 row = {"setting": setting.name, "method": method, "display_name": display, "seed": seed}
-                row.update({k: float(rng.uniform(0.1, 0.9)) for k in SUMMARY_METRICS})
+                row.update({k: float(rng.uniform(0.1, 0.9)) for k in (*SUMMARY_METRICS, "fault_rate")})
                 rows.append(row)
     per_seed = pd.DataFrame(rows)
     out = root / name
@@ -151,7 +151,7 @@ def test_report_macros_are_well_formed_and_cover_every_experiment(generated):
         assert value == "--" or re.fullmatch(r"(\\ensuremath\{-\})?[0-9.,]+(\\%)?|<0\.001", value), value
 
 
-def test_curve_stats_separates_never_check_from_detect_without_repair():
+def test_curve_stats_separates_low_detection_from_detect_without_repair():
     curves = pd.DataFrame(
         {
             "method": "m",
@@ -165,7 +165,7 @@ def test_curve_stats_separates_never_check_from_detect_without_repair():
     stats = report.curve_stats(curves, per_seed)
     assert stats["main/m/collapse_rate"] == pytest.approx(0.75)
     assert stats["main/m/collapse_norepair_rate"] == pytest.approx(0.25)
-    assert stats["main/m/collapse_nevercheck_rate"] == pytest.approx(0.25)
+    assert stats["main/m/collapse_lowdetect_rate"] == pytest.approx(0.25)
     assert stats["main/m/seeds_peak_above_half"] == "1"
     assert stats["main/m/seeds_selected_above_half"] == "0"
 
@@ -174,3 +174,18 @@ def test_holm_adjustment_applies_only_to_primary_comparisons():
     from ultrarl.stats import holm
 
     assert holm([0.01, 0.04, 0.03]) == pytest.approx([0.03, 0.06, 0.06])
+    rng = np.random.default_rng(0)
+    methods = {m for a, b, _ in report.COMPARISONS for m in (a, b)}
+    settings = {s for _, _, s in report.COMPARISONS}
+    per_seed = pd.DataFrame(
+        [
+            {"method": m, "setting": s, "seed": k, "success": rng.uniform()}
+            for m in methods
+            for s in settings
+            for k in range(5)
+        ]
+    )
+    frame = report.key_numbers(per_seed)
+    primary = frame[frame.primary]
+    assert len(primary) == len(report.PRIMARY) and frame.loc[~frame.primary, "p_holm"].isna().all()
+    assert np.allclose(primary.p_holm, holm(primary.p_value.tolist()))

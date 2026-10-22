@@ -88,10 +88,16 @@ class Observable:
     step_checked: bool
     fault_located: bool  # an UNSAFE check has been observed earlier in this episode
     repair_pending: bool  # ... and the located step has not yet been correctly re-executed
+    recent_events: tuple[int, ...]  # the last few actions, most recent last (see HISTORY_EVENTS)
     max_depth: int  # normaliser used by the absolute encoder (a fixed constant, not the chain length)
     think_cost: int  # action costs are part of the task specification
     verify_cost: int
     revise_cost: int
+
+    @property
+    def slack(self) -> int:
+        """Budget left beyond what finishing the chain needs: what non-THINK actions can still spend."""
+        return self.remaining_budget - (self.depth - self.step) * self.think_cost
 
 
 @dataclass
@@ -109,6 +115,17 @@ class EpisodeStats:
     # and the current step had not yet been checked ("fresh" opportunities).
     fresh_opps: list[int] = field(default_factory=lambda: [0, 0])
     fresh_verifies: list[int] = field(default_factory=lambda: [0, 0])
+
+
+# Codes for the recent-action history observed by the ``history`` encoder.
+HISTORY_LENGTH = 8
+HISTORY_EVENTS = {
+    (Action.THINK, None): 1,
+    (Action.VERIFY, VerifyStatus.SAFE): 2,
+    (Action.VERIFY, VerifyStatus.UNSAFE): 3,
+    (Action.REVISE, None): 4,
+    (Action.COMMIT, None): 5,
+}
 
 
 def fault_position_probabilities(cfg: EnvConfig, depth: int) -> np.ndarray:
@@ -186,6 +203,7 @@ class ChainEnv:
         self.repaired = False
         self.last_verify = VerifyStatus.NONE
         self.revised_recently = False
+        self.events: list[int] = []
         self.done = False
         self.success = False
         self.incomplete_commit = False
@@ -257,6 +275,7 @@ class ChainEnv:
             step_checked=self.step_idx in self.checked,
             fault_located=self.fault_located,
             repair_pending=self.fault_located and not self.repaired,
+            recent_events=tuple(self.events[-HISTORY_LENGTH:]),
             max_depth=self.cfg.max_depth,
             think_cost=self.cfg.think_cost,
             verify_cost=self.cfg.verify_cost,
@@ -301,6 +320,7 @@ class ChainEnv:
         reward = compute_reward(self.cfg, event)
 
         self.revised_recently = action == Action.REVISE
+        self.events.append(HISTORY_EVENTS[(action, self.last_verify if action == Action.VERIFY else None)])
         if action != Action.VERIFY:
             self.last_verify = VerifyStatus.NONE
         self.stats.total_return += reward

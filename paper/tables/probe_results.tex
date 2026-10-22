@@ -1,15 +1,18 @@
 \begin{tabular}{lcccccc}
 \toprule
-Agent & Detect, no repair & THINK after \textsc{unsafe} (sel.\ / last) & Learned R / T & True R / T & On track: learned / true & Excess error R / T \\
+Agent & Detect, no repair & THINK after \textsc{unsafe} (sel.\ / last) & Error R / T & Offset & Excess error R / T & Excess, last ckpt.\ R / T \\
 \midrule
-Outcome-only & 15\% & 7\% / 26\% & \ensuremath{-}0.62 / \ensuremath{-}0.68 & 0.73 / \ensuremath{-}1.32 & \ensuremath{-}0.65 / 0.34 & \ensuremath{-}0.36 / +1.63 \\
-Naive process & 29\% & 2\% / 50\% & \ensuremath{-}0.54 / \ensuremath{-}0.59 & 0.82 / \ensuremath{-}1.31 & \ensuremath{-}0.56 / 0.59 & \ensuremath{-}0.21 / +1.87 \\
-Monitorability-aware (MA) & 21\% & 2\% / 26\% & 0.06 / 0.06 & 0.62 / \ensuremath{-}1.04 & 0.24 / 0.81 & 0.00 / +1.67 \\
-MA + memory bit & 7\% & 1\% / 10\% & 0.54 / 0.50 & 0.59 / \ensuremath{-}0.10 & 0.75 / 0.83 & +0.02 / +0.68 \\
-MA, bonus paid on repair & 1\% & 1\% / 1\% & 0.11 / 0.04 & 0.96 / \ensuremath{-}1.35 & 0.17 / 0.81 & \ensuremath{-}0.21 / +2.04 \\
-MA + memory bit, bonus on repair & 0\% & 1\% / 3\% & 0.79 / 0.63 & 0.90 / \ensuremath{-}1.39 & 0.70 / 0.83 & +0.03 / +2.15 \\
-Outcome-only + pending bit & 0\% & 7\% / 3\% & \ensuremath{-}0.17 / \ensuremath{-}0.31 & 0.74 / \ensuremath{-}0.62 & \ensuremath{-}0.17 / 0.64 & \ensuremath{-}0.09 / +1.12 \\
-Naive process + pending bit & 0\% & 0\% / 2\% & 0.11 / 0.00 & 0.80 / \ensuremath{-}1.11 & 0.14 / 0.69 & \ensuremath{-}0.14 / +1.66 \\
-MA + pending bit & 0\% & 0\% / 1\% & 0.49 / 0.34 & 0.73 / \ensuremath{-}0.59 & 0.70 / 0.88 & \ensuremath{-}0.06 / +1.11 \\
+Outcome-only & 15\% & 7\% / 26\% & \ensuremath{-}1.35 / +0.64 & \ensuremath{-}0.76 & \ensuremath{-}0.59 / +1.40 & \ensuremath{-}0.92 / +0.88 \\
+Naive process & 29\% & 2\% / 50\% & \ensuremath{-}1.36 / +0.72 & \ensuremath{-}1.00 & \ensuremath{-}0.36 / +1.72 & \ensuremath{-}0.89 / +0.83 \\
+Monitorability-aware (MA) & 21\% & 2\% / 26\% & \ensuremath{-}0.57 / +1.10 & \ensuremath{-}0.45 & \ensuremath{-}0.12 / +1.55 & \ensuremath{-}0.41 / +1.15 \\
+MA + memory bit & 7\% & 1\% / 10\% & \ensuremath{-}0.05 / +0.60 & 0.00 & \ensuremath{-}0.05 / +0.60 & \ensuremath{-}0.22 / +0.78 \\
+MA, bonus paid on repair & 1\% & 1\% / 1\% & \ensuremath{-}0.85 / +1.40 & \ensuremath{-}0.54 & \ensuremath{-}0.31 / +1.94 & \ensuremath{-}0.42 / +1.83 \\
+MA + memory bit, bonus on repair & 0\% & 1\% / 3\% & \ensuremath{-}0.11 / +2.02 & \ensuremath{-}0.04 & \ensuremath{-}0.07 / +2.06 & \ensuremath{-}0.13 / +2.01 \\
+Outcome-only + pending bit & 0\% & 7\% / 3\% & \ensuremath{-}0.91 / +0.31 & \ensuremath{-}0.71 & \ensuremath{-}0.19 / +1.02 & \ensuremath{-}0.71 / +0.85 \\
+Naive process + pending bit & 0\% & 0\% / 2\% & \ensuremath{-}0.69 / +1.11 & \ensuremath{-}0.49 & \ensuremath{-}0.20 / +1.60 & \ensuremath{-}0.62 / +1.24 \\
+MA + pending bit & 0\% & 0\% / 1\% & \ensuremath{-}0.24 / +0.93 & \ensuremath{-}0.14 & \ensuremath{-}0.10 / +1.07 & \ensuremath{-}0.15 / +1.23 \\
+Outcome-only + last 8 actions & 0\% & 1\% / 1\% & +0.04 / +0.15 & \ensuremath{-}0.01 & +0.05 / +0.16 & \ensuremath{-}0.16 / +0.17 \\
+Naive process + last 8 actions & 0\% & 0\% / 1\% & +0.04 / +0.26 & 0.02 & +0.02 / +0.24 & \ensuremath{-}0.12 / +0.24 \\
+MA + last 8 actions & 0\% & 1\% / 0\% & 0.00 / +0.44 & 0.04 & \ensuremath{-}0.04 / +0.40 & \ensuremath{-}0.07 / +0.47 \\
 \bottomrule
 \end{tabular}

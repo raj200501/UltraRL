@@ -5,6 +5,8 @@
 #   repair  - detect-without-repair: pay the fault bonus on repair, not detection
 #   pending - detect-without-repair: add a bit "a caught fault is not yet repaired",
 #             under all three rewards (tests the state-aliasing explanation)
+#   history - the same, without the hand-made bit: the last 8 actions and check
+#             results, which the agent has to learn to use (all three rewards)
 name: followups
 
 env:
@@ -55,6 +57,15 @@ methods:
   - name: naive_pending
     display_name: "naive process + repair-pending bit"
     env_overrides: {reward_scheme: naive_process, observation: pending}
+  - name: ma_history
+    display_name: "+ last 8 actions"
+    env_overrides: {reward_scheme: monitorability_aware, observation: history}
+  - name: outcome_history
+    display_name: "outcome-only + last 8 actions"
+    env_overrides: {reward_scheme: outcome_only, observation: history}
+  - name: naive_history
+    display_name: "naive process + last 8 actions"
+    env_overrides: {reward_scheme: naive_process, observation: history}
 
 evaluation:
   episodes: 500

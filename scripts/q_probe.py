@@ -9,10 +9,12 @@ Each checkpoint is rolled out greedily on training-length evaluation episodes.
   Q(REVISE) and Q(THINK), and their true discounted returns under the same
   greedy policy, obtained by playing each action out from a copy of the
   environment (episodes are deterministic once reset, so this is exact).
-* As a calibration baseline, at every other decision point where the running
-  value is correct and no caught fault is waiting to be repaired ("on track"),
-  we record the learned value of the greedy action and the discounted return
-  that actually followed.
+* As calibration baselines we record the learned value of the greedy action and
+  the discounted return that actually followed (a) at the first decision point
+  of every episode, where nothing hidden can differ between episodes that look
+  alike, and (b) at every decision point where the running value is correct and
+  no caught fault is waiting to be repaired ("on track"; this conditions on
+  hidden state, so it is only a secondary baseline).
 * We also record how often an observation on the THINK branch, while the running
   value is still wrong, also occurs on track in the same checkpoint's rollouts.
 
@@ -36,7 +38,17 @@ from ultrarl.train import checkpoint_path
 ROOT = Path(__file__).resolve().parents[1]
 METHODS = {
     "main": ["outcome_inv", "naive_inv", "ma_inv"],
-    "followups": ["ma_memory", "ma_repair", "ma_memory_repair", "outcome_pending", "naive_pending", "ma_pending"],
+    "followups": [
+        "ma_memory",
+        "ma_repair",
+        "ma_memory_repair",
+        "outcome_pending",
+        "naive_pending",
+        "ma_pending",
+        "outcome_history",
+        "naive_history",
+        "ma_history",
+    ],  # fmt: skip
 }
 SETTING = "train_like"
 EPISODES = 500
@@ -68,14 +80,17 @@ def discounted_suffix_sums(rewards: list[float], gamma: float) -> np.ndarray:
 
 def probe(agent: DQNAgent, env: ChainEnv, seed: int, depth_range: tuple[int, int], gamma: float) -> dict[str, float]:
     q_think, q_revise, g_think, g_revise, think = [], [], [], [], []
-    q_track, g_track = [], []
+    q_track, g_track, q_start, g_start = [], [], [], []
     on_track, past_fault = set(), []
     for i in range(EPISODES):
         obs = env.reset(seed=episode_seed(EVAL_STREAM, seed, i, SETTING), depth_range=depth_range)
         done, rewards, track_points = False, [], []
+        first_value = None
         while not done:
             mask = env.action_mask()
             q = agent.q_values(obs)
+            if first_value is None:
+                first_value = float(np.max(np.where(mask, q, -np.inf)))
             pending = env.fault_located and not env.repaired
             if env.belief_valid and not pending:
                 on_track.add(key(obs))
@@ -89,11 +104,14 @@ def probe(agent: DQNAgent, env: ChainEnv, seed: int, depth_range: tuple[int, int
             obs, reward, done, _ = env.step(agent.act(obs, mask))
             rewards.append(reward)
         returns = discounted_suffix_sums(rewards, gamma)
+        q_start.append(first_value)
+        g_start.append(returns[0])
         for t, value in track_points:
             q_track.append(value)
             g_track.append(returns[t])
     stats = {"unsafe_points": len(think)}
     stats.update(q_on_track=float(np.mean(q_track)), return_on_track=float(np.mean(g_track)))
+    stats.update(q_start=float(np.mean(q_start)), return_start=float(np.mean(g_start)))
     if think:
         stats.update(
             {

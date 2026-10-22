@@ -42,6 +42,12 @@ in whether, and how, they reveal position and chain length:
     ``memory`` bit does not separate these either, because it stays set after a
     repair. An agent that remembers its own checks and undos could compute it.
 
+``history`` (49-d)
+    the invariant features plus a one-hot code for each of the last 8 actions
+    (THINK, VERIFY with a SAFE or UNSAFE result, REVISE), oldest first and
+    zero-padded. Enough to infer a pending repair on chains of up to 8 steps,
+    but the agent has to learn to use it.
+
 Budget slack ``b - (d - t)`` is the number of non-THINK actions the agent can
 still afford while finishing the chain.
 """
@@ -55,8 +61,10 @@ import numpy as np
 if TYPE_CHECKING:
     from ultrarl.env import Observable
 
-OBSERVATION_KINDS = ("absolute", "absolute_nopos", "invariant", "ratio", "memory", "pending")
-_DIMS = {"absolute": 10, "absolute_nopos": 8, "invariant": 9, "ratio": 10, "memory": 10, "pending": 10}
+OBSERVATION_KINDS = ("absolute", "absolute_nopos", "invariant", "ratio", "memory", "pending", "history")
+HISTORY_STEPS, HISTORY_CODES = 8, 5  # must match ultrarl.env.HISTORY_LENGTH and the THINK..COMMIT codes
+_DIMS = {"absolute": 10, "absolute_nopos": 8, "invariant": 9, "ratio": 10, "memory": 10, "pending": 10,
+         "history": 9 + HISTORY_STEPS * HISTORY_CODES}  # fmt: skip
 SLACK_SCALE = 10.0
 GAP_CAP = 3
 
@@ -75,7 +83,7 @@ def _verify_one_hot(o: Observable) -> list[float]:
 
 
 def encode_observation(kind: str, o: Observable) -> np.ndarray:
-    slack = o.remaining_budget - max(0, o.depth - o.step)
+    slack = o.slack
     if kind in ("absolute", "absolute_nopos"):
         position = [o.step / max(1, o.max_depth), o.depth / max(1, o.max_depth)]
         budget = [
@@ -85,7 +93,7 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
         rest = [o.unchecked_gap / max(1, o.max_depth), float(o.cue), float(o.revised_recently), *_verify_one_hot(o)]
         # "absolute" keeps the original study's feature order
         features = [position[0], budget[0], position[1], budget[1], *rest] if kind == "absolute" else [*budget, *rest]
-    elif kind in ("invariant", "ratio", "memory", "pending"):
+    elif kind in ("invariant", "ratio", "memory", "pending", "history"):
         features = [
             float(o.step >= o.depth),
             float(o.step == 0),
@@ -101,6 +109,13 @@ def encode_observation(kind: str, o: Observable) -> np.ndarray:
             features.append(float(o.fault_located))
         elif kind == "pending":
             features.append(float(o.repair_pending))
+        elif kind == "history":
+            padded = [0] * (HISTORY_STEPS - len(o.recent_events)) + list(o.recent_events)
+            for code in padded:
+                one_hot = [0.0] * HISTORY_CODES
+                if code:
+                    one_hot[code - 1] = 1.0
+                features.extend(one_hot)
     else:
         raise ValueError(f"unknown observation kind {kind!r}; expected one of {OBSERVATION_KINDS}")
     return np.asarray(features, dtype=np.float32)

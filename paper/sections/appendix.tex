@@ -2,7 +2,7 @@
 \label{app:env}
 
 \paragraph{Transitions.}
-Given the current true value $v$, a transition is drawn uniformly from the available operations: \texttt{add}~$k$ with $k \in \{1,\dots,4\}$; \texttt{sub}~$k$ with $k \in \{1,\dots,\min(4, v-1)\}$ if $v > 2$; and \texttt{mul}~$k$ with $k \in \{2,3\}$ if $|v| \le 16$. The corrupted version of \texttt{add}/\texttt{sub}~$k$ uses $k{+}1$, and that of \texttt{mul}~$k$ is \texttt{add}~$k$. If the corrupted operation happens to give the same value, it is replaced by \texttt{add}~$k{+}2$. A corrupted step therefore always changes the value (unit-tested).
+Given the current true value $v$, an operation type is drawn uniformly from those available, and then its operand uniformly: \texttt{add}~$k$ with $k \in \{1,\dots,4\}$; \texttt{sub}~$k$ with $k \in \{1,\dots,\min(4, v-1)\}$ if $v > 2$; and \texttt{mul}~$k$ with $k \in \{2,3\}$ if $|v| \le 16$. The corrupted version of \texttt{add}/\texttt{sub}~$k$ uses $k{+}1$, and that of \texttt{mul}~$k$ is \texttt{add}~$k$. If the corrupted operation happens to give the same value, it is replaced by \texttt{add}~$k{+}2$. A corrupted step therefore always changes the value (unit-tested).
 
 \paragraph{Fault prior.}
 Conditional on a fault, its position $h \in \{0,\dots,d-1\}$ has weight $1 + 5\,(1 - |h - c| / \max(1, c))$ with $c = (d-1)/2$, i.e.\ it peaks in the middle of the chain.
@@ -115,7 +115,7 @@ Table~\ref{tab:pilot} lists the two-seed pilot behind the choice of learner sett
 \centering
 \small
 \setlength{\tabcolsep}{3pt}
-\caption{Value probe (\texttt{scripts/q\_probe.py}) at decision points right after an \textsc{unsafe} result, training lengths, selected checkpoints unless noted (means over points, then over 10 seeds). R/T: \texttt{REVISE}/\texttt{THINK}. ``True'' values are discounted returns of playing each action and then the same greedy policy, computed exactly from a copy of the environment. ``On track'': learned value of the greedy action against the return that followed, at decision points with a correct running value and no pending repair. ``Excess error'': learned minus true value, minus the on-track error. ``Detect, no repair'': fraction of late checkpoints that collapse while still catching faults.}
+\caption{Value probe (\texttt{scripts/q\_probe.py}) at decision points right after an \textsc{unsafe} result, training lengths, selected checkpoints unless noted (means over points, then over 10 seeds). R/T: \texttt{REVISE}/\texttt{THINK}. ``True'' values are discounted returns of playing each action and then the same greedy policy, computed exactly from a copy of the environment. ``Error'': learned minus true value. ``Offset'': the same error for the greedy action at the first decision point of an episode, where no hidden state can differ. ``Excess error'': error minus offset. ``Detect, no repair'': fraction of late checkpoints that collapse while still catching faults. Seeds without any such decision point are left out of a mean (the last outcome-only checkpoints have them in only \val{probe/outcome_inv@final/n_seeds} of 10 seeds).}
 \label{tab:probe}
 \resizebox{\linewidth}{!}{\input{tables/probe_results.tex}}
 \end{table}

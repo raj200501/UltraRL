@@ -8,6 +8,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 import matplotlib
@@ -227,7 +228,7 @@ def fmt(r: pd.Series, metric: str, digits: int = 2) -> str:
     v, lo, hi = r[metric], r[f"{metric}_lo"], r[f"{metric}_hi"]
     if np.isnan(v):
         return "--"
-    return f"{v:.{digits}f}\\,{{\\scriptsize[{_number(lo, digits, True)}, {_number(hi, digits, True)}]}}"
+    return f"{_number(v, digits)}\\,{{\\scriptsize[{_number(lo, digits, True)}, {_number(hi, digits, True)}]}}"
 
 
 def latex_table(header: list[str], rows: list[list[str]], align: str) -> str:
@@ -313,7 +314,7 @@ def table_ablation(summary: pd.DataFrame, out: Path, name: str = "ablation_resul
 
 
 COLLAPSE_THRESHOLD = 0.35  # a margin above never-check success (Always THINK: ~0.20 on training lengths)
-NEVER_CHECK_DETECTION = 0.2  # collapsed checkpoints below this detection rate have (nearly) stopped checking
+LOW_DETECTION = 0.2  # collapsed checkpoints below this detection rate check, but almost never catch a fault
 NO_REPAIR_DETECTION = 0.5  # collapsed checkpoints at or above this detection rate still check but fail to repair
 BURN_IN = 5000
 
@@ -325,8 +326,9 @@ def curve_stats(
 
     A late checkpoint (after ``burn_in`` episodes) is *collapsed* if its greedy
     success on training lengths is at most ``COLLAPSE_THRESHOLD``. Collapsed
-    checkpoints are split by their fault-detection rate into *never-check*
-    (detection < 0.2: the policy has stopped checking) and *detect-without-repair*
+    checkpoints are split by their fault-detection rate into *low-detection*
+    (detection < 0.2: the policy checks too little, or in the wrong places, to catch
+    faults; the ones we inspected check only the final step) and *detect-without-repair*
     (detection >= 0.5: it still catches faults but does not complete the repair).
     """
     out: dict[str, float | str] = {}
@@ -337,13 +339,13 @@ def curve_stats(
             detect=sub.train_like_fault_detected,
         )
         sub = sub.assign(
-            nevercheck=sub.collapsed & (sub.detect < NEVER_CHECK_DETECTION),
+            lowdetect=sub.collapsed & (sub.detect < LOW_DETECTION),
             norepair=sub.collapsed & (sub.detect >= NO_REPAIR_DETECTION),
         )
-        for name in ("collapsed", "nevercheck", "norepair"):
+        for name in ("collapsed", "lowdetect", "norepair"):
             key = {
                 "collapsed": "collapse_rate",
-                "nevercheck": "collapse_nevercheck_rate",
+                "lowdetect": "collapse_lowdetect_rate",
                 "norepair": "collapse_norepair_rate",
             }
             per_seed_rate = sub.groupby("seed")[name].mean().to_numpy(dtype=float)
@@ -374,12 +376,22 @@ def curve_stats(
     return out
 
 
+def unrepaired_loss_macros(per_seed: pd.DataFrame, prefix: str) -> dict[str, float]:
+    """Fraction of episodes lost to a fault that was caught but not repaired, per method and setting:
+    P(fault) * P(caught | fault) * P(failure | caught), computed per seed and averaged."""
+    loss = per_seed.fault_rate * per_seed.fault_detected * (1.0 - per_seed.success_given_detected)
+    means = per_seed.assign(loss=loss).groupby(["method", "setting"]).loss.mean()
+    return {f"{prefix}/{m}/{s}/unrepaired_rate": float(v) for (m, s), v in means.items()}
+
+
 def selection_macros(train_runs: pd.DataFrame, prefix: str) -> dict[str, str]:
     """When the selected checkpoints come from: median episode, and how many are within the burn-in."""
     out: dict[str, str] = {}
     for method, sub in train_runs.groupby("method"):
         out[f"{prefix}/{method}/selected_episode_median"] = f"{sub.selected_episode.median():,.0f}"
         out[f"{prefix}/{method}/selected_early"] = str(int((sub.selected_episode <= BURN_IN).sum()))
+        if "selection_success" in sub:
+            out[f"{prefix}/{method}/selection_success_median"] = f"{sub.selection_success.median():.2f}"
     return out
 
 
@@ -529,27 +541,36 @@ def table_followups(
 
 
 def table_pending(main_summary: pd.DataFrame, summary: pd.DataFrame, stats: dict[str, float | str], out: Path) -> None:
-    """Each reward with and without the repair-pending bit (invariant observations otherwise)."""
+    """Each reward with the invariant observation, with the repair-pending bit added, and with
+    the last few actions added instead (if those runs exist)."""
     combined = pd.concat([main_summary, summary], ignore_index=True)
     rows = []
+    variants = [
+        ("inv", "main", ""),
+        ("pending", "followups", " + pending bit"),
+        ("history", "followups", " + last 8 actions"),
+    ]
     for scheme in SCHEMES:
-        for obs, prefix in (("inv", "main"), ("pending", "followups")):
+        for obs, prefix, suffix in variants:
             m = f"{scheme}_{obs}"
+            if m not in set(combined.method):
+                continue
             pct = [f"{100 * stats[f'{prefix}/{m}/{k}']:.0f}\\%" for k in ("collapse_rate", "collapse_norepair_rate",
-                                                                          "collapse_nevercheck_rate")]  # fmt: skip
+                                                                          "collapse_lowdetect_rate")]  # fmt: skip
             rows.append(
                 [
-                    SCHEME_LABEL[scheme] + (" + pending bit" if obs == "pending" else ""),
+                    SCHEME_LABEL[scheme] + suffix,
                     *pct,
                     fmt(row(combined, "train_like", m), "success"),
                     fmt(row(combined, "heldout_long", m), "success"),
                     fmt(row(combined, "heldout_xlong", m), "success"),
                     fmt(row(combined, "heldout_long", m + FINAL), "success"),
+                    fmt(row(combined, "heldout_xlong", m + FINAL), "success"),
                 ]
             )
-    header = ["Reward", "Collapsed", "no repair", "never check", "Success 3--6", "Success 7--9", "Success 10--14",
-              "Last ckpt.\\ 7--9"]  # fmt: skip
-    (out / "pending_results.tex").write_text(latex_table(header, rows, "lccccccc"), encoding="utf-8")
+    header = ["Reward and observation", "Collapsed", "no repair", "low detection", "Success 3--6", "Success 7--9",
+              "Success 10--14", "Last ckpt.\\ 7--9", "Last ckpt.\\ 10--14"]  # fmt: skip
+    (out / "pending_results.tex").write_text(latex_table(header, rows, "lcccccccc"), encoding="utf-8")
 
 
 def table_encoders(
@@ -618,21 +639,25 @@ def table_sensitivity_rewards(
 
 PROBE_METRICS = (
     "think_rate", "q_think", "q_revise", "return_think", "return_revise", "q_on_track", "return_on_track",
-    "aliased_rate",
+    "q_start", "return_start", "aliased_rate",
 )  # fmt: skip
-PROBE_DERIVED = ("q_gap", "true_gap", "track_bias", "think_bias", "revise_bias")
+PROBE_DERIVED = ("q_gap", "true_gap", "start_bias", "think_error", "revise_error", "think_bias", "revise_bias")
 
 
 def with_probe_derived(probe: pd.DataFrame) -> pd.DataFrame:
-    """Learned and true gaps between the two actions, and each value's error relative to the
-    checkpoint's error on on-track decision points (its general offset)."""
-    track_bias = probe.q_on_track - probe.return_on_track
+    """Learned and true gaps between the two actions; each value's raw error (learned minus
+    true); and its excess error, relative to the checkpoint's error at the first decision
+    point of an episode (its general offset, measured where no hidden state differs)."""
+    start_bias = probe.q_start - probe.return_start
+    think_error, revise_error = probe.q_think - probe.return_think, probe.q_revise - probe.return_revise
     return probe.assign(
         q_gap=probe.q_revise - probe.q_think,
         true_gap=probe.return_revise - probe.return_think,
-        track_bias=track_bias,
-        think_bias=probe.q_think - probe.return_think - track_bias,
-        revise_bias=probe.q_revise - probe.return_revise - track_bias,
+        start_bias=start_bias,
+        think_error=think_error,
+        revise_error=revise_error,
+        think_bias=think_error - start_bias,
+        revise_bias=revise_error - start_bias,
     )
 
 
@@ -641,6 +666,7 @@ def probe_macros(probe: pd.DataFrame) -> dict[str, float | str]:
     out: dict[str, float | str] = {}
     for (method, which), sub in with_probe_derived(probe).groupby(["method", "checkpoint"]):
         name = method + ("" if which == "best" else FINAL)
+        out[f"probe/{name}/n_seeds"] = str(int(sub.think_rate.notna().sum()))
         for metric in PROBE_METRICS + PROBE_DERIVED:
             low, high = t_interval(sub[metric].to_numpy(dtype=float))
             out.update({f"probe/{name}/{metric}": float(sub[metric].mean()), f"probe/{name}/{metric}/lo": low,
@@ -658,6 +684,9 @@ PROBE_ROWS = [
     ("followups", "outcome_pending", "Outcome-only + pending bit"),
     ("followups", "naive_pending", "Naive process + pending bit"),
     ("followups", "ma_pending", "MA + pending bit"),
+    ("followups", "outcome_history", "Outcome-only + last 8 actions"),
+    ("followups", "naive_history", "Naive process + last 8 actions"),
+    ("followups", "ma_history", "MA + last 8 actions"),
 ]
 
 
@@ -666,6 +695,17 @@ def _pair(a: float, b: float, signed: bool = False) -> str:
         return ("+" if signed and x >= 0.005 else "") + _number(x, 2)
 
     return f"{text(a)} / {text(b)}"
+
+
+def probe_range_macros(probe: pd.DataFrame, methods: tuple[str, ...] = ("outcome_inv", "naive_inv", "ma_inv")):
+    """Smallest and largest per-agent mean of the excess errors, over the main invariant agents."""
+    means = with_probe_derived(probe).groupby(["method", "checkpoint"]).mean(numeric_only=True)
+    out: dict[str, float] = {}
+    for which in ("best", "final"):
+        for metric in ("think_bias", "revise_bias"):
+            values = [means.loc[(m, which), metric] for m in methods if (m, which) in means.index]
+            out[f"probe/inv_{which}/{metric}/min"], out[f"probe/inv_{which}/{metric}/max"] = min(values), max(values)
+    return out
 
 
 def table_probe(
@@ -683,13 +723,13 @@ def table_probe(
             text,
             f"{100 * stats[f'{experiment}/{m}/collapse_norepair_rate']:.0f}\\%",
             f"{100 * best.think_rate:.0f}\\% / {100 * final.think_rate:.0f}\\%",
-            _pair(best.q_revise, best.q_think),
-            _pair(best.return_revise, best.return_think),
-            _pair(best.q_on_track, best.return_on_track),
+            _pair(best.revise_error, best.think_error, signed=True),
+            _number(best.start_bias, 2),
             _pair(best.revise_bias, best.think_bias, signed=True),
+            _pair(final.revise_bias, final.think_bias, signed=True),
         ])  # fmt: skip
-    header = ["Agent", "Detect, no repair", "THINK after \\textsc{unsafe} (sel.\\ / last)", "Learned R / T",
-              "True R / T", "On track: learned / true", "Excess error R / T"]  # fmt: skip
+    header = ["Agent", "Detect, no repair", "THINK after \\textsc{unsafe} (sel.\\ / last)", "Error R / T",
+              "Offset", "Excess error R / T", "Excess, last ckpt.\\ R / T"]  # fmt: skip
     (out / "probe_results.tex").write_text(latex_table(header, rows, "lcccccc"), encoding="utf-8")
 
 
@@ -707,6 +747,7 @@ LENGTHS = ("train_like", "heldout_long", "heldout_xlong")
 
 MACRO_HEADER = r"""% Generated by `python -m ultrarl.report`; do not edit by hand.
 % \val{exp/method/setting/metric} -> mean over seeds; \ci{...} -> mean [95% Student-t interval over seeds].
+% Only the results that the paper's sources reference are written.
 \makeatletter
 \newcommand{\val}[1]{\ifcsname ur@#1\endcsname\csname ur@#1\endcsname\else\errmessage{UltraRL: no result named #1}\fi}
 \newcommand{\ci}[1]{\val{#1}\,{\scriptsize[\val{#1/lo}, \val{#1/hi}]}}
@@ -734,7 +775,22 @@ def _pct_macro(key: str, value: float) -> str:
     return f"\\expandafter\\def\\csname ur@{key}/pct\\endcsname{{{_number(100 * value, 0)}\\%}}"
 
 
-def write_macros(path: Path, summaries: dict[str, pd.DataFrame], extras: dict[str, float | str]) -> None:
+def used_macros(paper: Path) -> set[str] | None:
+    """Result keys referenced by \\val or \\ci in the paper's sources (None if there are none)."""
+    sources = [paper / "main.tex", *sorted((paper / "sections").glob("*.tex"))]
+    keys: set[str] = set()
+    for source in (f for f in sources if f.exists()):
+        for command, key in re.findall(r"\\(val|ci)\{([^}]+)\}", source.read_text(encoding="utf-8")):
+            keys.add(key)
+            if command == "ci":
+                keys.update({f"{key}/lo", f"{key}/hi"})
+    return keys or None
+
+
+def write_macros(
+    path: Path, summaries: dict[str, pd.DataFrame], extras: dict[str, float | str], used: set[str] | None = None
+) -> None:
+    """Write every result as a macro, or only the ``used`` ones."""
     lines = [MACRO_HEADER]
     for exp, summary in summaries.items():
         metrics = [c for c in summary.columns if f"{c}_lo" in summary.columns and not c.endswith("_n")]
@@ -754,6 +810,8 @@ def write_macros(path: Path, summaries: dict[str, pd.DataFrame], extras: dict[st
         lines.append(_macro(key, value))
         if key.endswith(("_rate", "_rate/lo", "_rate/hi")):
             lines.append(_pct_macro(key, value))
+    if used is not None:
+        lines = [lines[0]] + [x for x in lines[1:] if re.search(r"ur@(.+?)\\endcsname", x).group(1) in used]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -787,6 +845,7 @@ def main(argv: list[str] | None = None) -> None:
     summaries = {"main": summary}
     extras = curve_stats(curves, per_seed)
     extras.update(comparison_macros(comparisons))
+    extras.update(unrepaired_loss_macros(per_seed, "main"))
     for method in ("cue_triggered", "optimal"):
         extras.update(success_range(summary, f"main/{method}/lengths", [(method, s) for s in LENGTHS]))
     for name in ("ablations", "sensitivity"):
@@ -840,6 +899,7 @@ def main(argv: list[str] | None = None) -> None:
     if probe_path.exists():
         probe = pd.read_csv(probe_path)
         extras.update(probe_macros(probe))
+        extras.update(probe_range_macros(probe))
     coverage_path = results / "observation_coverage.csv"
     if coverage_path.exists():
         for _, c in pd.read_csv(coverage_path).iterrows():
@@ -861,6 +921,10 @@ def main(argv: list[str] | None = None) -> None:
         pairs += [(m + FINAL, m.replace("_pending", "_inv") + FINAL, s) for m in pending for s in lengths]
         if {"ma_pending", "outcome_pending"} <= set(pending):
             pairs += [(f"ma_pending{x}", f"outcome_pending{x}", s) for x in ("", FINAL) for s in lengths]
+        pairs += [(f"{m}{FINAL}", "cue_triggered", s) for m in pending for s in ("heldout_long", "heldout_xlong")]
+        history = [m for m in followup_methods if m.endswith("_history")]
+        pairs += [(m + x, m.replace("_history", y) + x, s) for m in history for y in ("_inv", "_pending")
+                  for x in ("", FINAL) for s in lengths]  # fmt: skip
         extras.update(comparison_macros(key_numbers(joint, pairs)))
         table_followups(summary, summaries["followups"], extras, tables)
         if {f"{s}_pending" for s in SCHEMES} <= set(followup_methods):
@@ -872,6 +936,7 @@ def main(argv: list[str] | None = None) -> None:
         lengths = ("train_like", "heldout_long", "heldout_xlong")
         pairs = [("ma_abs_nopos", ref, s) for ref in ("ma_abs", "ma_inv") for s in lengths]
         extras.update(comparison_macros(key_numbers(joint, pairs)))
+        extras.update(unrepaired_loss_macros(pd.read_csv(encoder_dir / "eval_per_seed.csv"), "encoders"))
         if "coverage/absolute_nopos/heldout_xlong/unseen_rate" in extras:
             table_encoders(summary, summaries["encoders"], extras, tables)
     if probe_path.exists() and "followups" in summaries:
@@ -880,7 +945,7 @@ def main(argv: list[str] | None = None) -> None:
         runs = results / name / "train_runs.csv"
         if runs.exists():
             extras.update(selection_macros(pd.read_csv(runs), name))
-    write_macros(paper / "numbers.tex", summaries, extras)
+    write_macros(paper / "numbers.tex", summaries, extras, used_macros(paper))
     print(f"[report] wrote figures to {figures}, tables to {tables} and {paper / 'numbers.tex'}")
 
 

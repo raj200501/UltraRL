@@ -109,7 +109,7 @@ def optimal_policy(cfg: EnvConfig):
             if o.depth not in planners:
                 planners[o.depth] = OptimalPlanner(cfg, o.depth)
             planner = planners[o.depth]
-            slack = o.remaining_budget - (o.depth - o.step) * o.think_cost
+            slack = o.slack
             if planner.should_check(o.step, slack, o.cue):
                 return Action.VERIFY
         if o.step < o.depth and mask[Action.THINK]:

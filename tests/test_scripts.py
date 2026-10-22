@@ -7,8 +7,7 @@ import numpy as np
 import pytest
 
 from ultrarl.config import EnvConfig
-from ultrarl.dqn import DQNAgent
-from ultrarl.env import ChainEnv
+from ultrarl.env import Action, ChainEnv
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
@@ -20,19 +19,36 @@ def _load(name):
     return module
 
 
-def test_q_probe_statistics_are_consistent():
+class ScriptedAgent:
+    """Checks every new step and repairs on UNSAFE (invariant observation), with Q-values that
+    prefer exactly the action it takes."""
+
+    def act(self, obs, mask):
+        at_end, at_start, unsafe, fresh = obs[0] == 1, obs[1] == 1, obs[8] == 1, obs[6] == 1 and obs[7] == 0
+        if unsafe and mask[Action.REVISE]:
+            return int(Action.REVISE)
+        if not at_start and fresh and obs[5] == 0 and mask[Action.VERIFY]:
+            return int(Action.VERIFY)
+        return int(Action.COMMIT if at_end or not mask[Action.THINK] else Action.THINK)
+
+    def q_values(self, obs):
+        q = np.zeros(4)
+        q[self.act(obs, np.ones(4, dtype=bool))] = 1.0
+        return q
+
+
+def test_q_probe_on_a_scripted_repairing_agent():
     q_probe = _load("q_probe")
-    q_probe.EPISODES = 40
-    env = ChainEnv(EnvConfig())
-    agent = DQNAgent(env.obs_dim, env.num_actions, hidden_size=16)  # untrained, so it acts arbitrarily
-    stats = q_probe.probe(agent, env, seed=0, depth_range=(3, 6), gamma=0.99)
-    assert stats["unsafe_points"] >= 0
-    for key in ("think_rate", "aliased_rate"):
-        if key in stats and not np.isnan(stats[key]):
-            assert 0.0 <= stats[key] <= 1.0
-    for key in ("return_think", "return_revise", "return_on_track"):
-        if key in stats:
-            assert -3.0 < stats[key] < 2.0  # bounded by the terminal rewards plus small shaping
+    q_probe.EPISODES = 60
+    env = ChainEnv(EnvConfig(observation="invariant"))
+    stats = q_probe.probe(ScriptedAgent(), env, seed=0, depth_range=(3, 6), gamma=0.99)
+    assert stats["unsafe_points"] > 10
+    assert stats["think_rate"] == 0.0  # it always repairs
+    assert stats["q_revise"] == 1.0 and stats["q_think"] == 0.0
+    # continuing past a caught fault always fails, so repairing is worth far more
+    assert stats["return_think"] < -1.0 and stats["return_revise"] > stats["return_think"] + 1.0
+    assert 0.0 <= stats["aliased_rate"] <= 1.0
+    assert -2.0 < stats["return_start"] < 1.5
 
 
 def test_discounted_suffix_sums():

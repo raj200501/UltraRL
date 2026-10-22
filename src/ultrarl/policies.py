@@ -55,7 +55,7 @@ def budget_aware(margin: int) -> Policy:
     def policy(o: Observable, mask: np.ndarray) -> int:
         if o.last_verify == VerifyStatus.UNSAFE and mask[Action.REVISE]:
             return Action.REVISE
-        slack = o.remaining_budget - (o.depth - o.step) * o.think_cost
+        slack = o.slack
         needed = o.verify_cost + o.revise_cost + o.think_cost  # check, then undo and redo
         affordable = slack >= needed
         wanted = o.cue == 1 or slack >= needed + margin

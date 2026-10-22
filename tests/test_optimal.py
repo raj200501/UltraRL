@@ -67,3 +67,11 @@ def test_no_back_checking_restriction_does_not_bind_on_short_chains(cfg, depth):
     planned = OptimalPlanner(cfg, depth).value(0, initial_slack(cfg, depth))
     assert exhaustive_success(cfg, depth) == pytest.approx(planned, abs=1e-12)
     assert planned < 1.0
+
+
+def test_exhaustive_search_can_beat_the_restricted_planner():
+    # Positive control: with expensive checks and plenty of slack, undoing to check an
+    # earlier step pays, so the exhaustive search must find more than the planner.
+    cfg = EnvConfig(p_fault=0.95, verify_cost=3, revise_cost=1, budget_extra=7)
+    planned = OptimalPlanner(cfg, 3).value(0, initial_slack(cfg, 3))
+    assert exhaustive_success(cfg, 3) > planned + 0.05
