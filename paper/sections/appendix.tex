@@ -2,7 +2,7 @@
 \label{app:env}
 
 \paragraph{Transitions.}
-Given the current true value $v$, an operation type is drawn uniformly from those available, and then its operand uniformly: \texttt{add}~$k$ with $k \in \{1,\dots,4\}$; \texttt{sub}~$k$ with $k \in \{1,\dots,\min(4, v-1)\}$ if $v > 2$; and \texttt{mul}~$k$ with $k \in \{2,3\}$ if $|v| \le 16$. The corrupted version of \texttt{add}/\texttt{sub}~$k$ uses $k{+}1$, and that of \texttt{mul}~$k$ is \texttt{add}~$k$. If the corrupted operation happens to give the same value, it is replaced by \texttt{add}~$k{+}2$. A corrupted step therefore always changes the value (unit-tested).
+Given the current true value $v$, an operation type is drawn uniformly from those available, and then its operand uniformly: \texttt{add}~$k$ with $k \in \{1,\dots,4\}$; \texttt{sub}~$k$ with $k \in \{1,\dots,\min(4, v-1)\}$ if $v > 2$; and \texttt{mul}~$k$ with $k \in \{2,3\}$ if $|v| \le 16$. The corrupted version of \texttt{add}/\texttt{sub}~$k$ uses $k{+}1$, and that of \texttt{mul}~$k$ is \texttt{add}~$k$. If the corrupted operation happens to give the same value, it is replaced by \texttt{add}~$k{+}2$. A corrupted step therefore always changes the value (unit-tested). All operations are injective, so a wrong running value stays wrong through later steps until the fault has been located and its step undone and redone.
 
 \paragraph{Fault prior.}
 Conditional on a fault, its position $h \in \{0,\dots,d-1\}$ has weight $1 + 5\,(1 - |h - c| / \max(1, c))$ with $c = (d-1)/2$, i.e.\ it peaks in the middle of the chain.

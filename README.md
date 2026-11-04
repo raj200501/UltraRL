@@ -9,10 +9,13 @@ Raj Kashikar · [paper (PDF)](paper/main.pdf) · made largely with an AI coding 
 > **In one sentence:** in an exact testbed for budgeted self-verification, a small RL agent's checking generalizes to longer problems mainly when its observations neither change meaning nor take unseen values as the problem grows, and its habit of catching faults without fixing them disappears once the observation records whether a fix is still pending.
 >
 > - **Representation:** with length-dependent features every reward falls below never-checking on long chains; length-invariant features recover most of the performance.
-> - **Missing state:** agents under every reward catch faults and then fail to repair them; one bit saying "a caught fault is still open", or a window of the last 3 actions, removes this.
-> - **Process rewards:** paying for informative checks makes agents find checking sooner (median episode 3,500 vs 15,000) and lose it less once found (24% vs 66% of later checkpoints collapse); a step-correctness bonus, closer to a process reward model, helps more the larger it is, but plateaus lower and never resolvably beats outcome-only at selected checkpoints.
+> - **Missing state:** under every reward, agents drift into catching faults and then not repairing them (15–29% of checkpoints after episode 5,000 of 20,000, invariant observations); this is a learning failure under partial observability, not reward hacking, and one bit saying "a caught fault is still open", or a window of the last 3 actions, removes it.
+> - **Process rewards:** paying for informative checks makes agents find checking sooner (median episode 3,500 vs 15,000 for outcome-only) and lose it less once found (24% vs 66% of the checkpoints after that point fall back to success at most 0.35); a step-correctness bonus, closer to a process reward model, helps more the larger it is, but its checkpoints plateau lower than with the check payment and it never resolvably beats outcome-only at the checkpoints selected on training-length validation.
+> - **Correction:** this project's [first version](https://github.com/raj200501/UltraRL/blob/81ec8cb/README.md) concluded that RL with the reward that pays most for informative checks "remains brittle under longer held-out chains" (success 0.60 on training lengths, 0.11 at 7–9). A controlled re-run reversed that: the failure came mostly from length-dependent observation features, compounded by under-training and last-checkpoint evaluation ([details](#a-correction-to-the-earlier-version)). At larger scale, the same confounds can make a reward look responsible for failures it did not cause.
 
 Reasoning models increasingly check and revise their own steps. This project studies a narrow version of that behaviour that can be measured exactly: *when an agent has a fixed budget, does it learn which steps are worth checking, and does what it learns transfer to longer problems?*
+
+What this might mean for training and overseeing reasoning models, where so small a testbed stops, and what to try next: [below](#what-this-suggests-and-what-it-does-not).
 
 **The setup.** An agent executes an arithmetic chain that may contain one silent fault. It sees a noisy one-bit "this step looks suspicious" cue and divides a fixed budget between four actions:
 
@@ -109,7 +112,7 @@ Neither records whether a caught fault has been repaired. One follow-up adds tha
 
 1. **Length generalization depends mainly on the observation encoder.**
    - The original encoder's features depend on chain length. In rollouts of the hand-coded policies, 100% of held-out observations never occur exactly in a large sample of training-length rollouts, and every reward ends up *below* never-checking on lengths 10–14, mostly by committing before executing a single step.
-   - A length-invariant encoder (2–5% novel) keeps 0.86 at lengths 7–9: a difference of −0.02 [−0.05, 0.01] from the cue-triggered heuristic, and below an exact planner that knows the chain length (0.94).
+   - With a length-invariant encoder (2–5% novel), monitorability-aware agents keep 0.86 at lengths 7–9: a difference of −0.02 [−0.05, 0.01] from the cue-triggered heuristic, and below an exact planner that knows the chain length (0.94). Outcome-only and naive agents with the same encoder reach 0.62 and 0.76.
    - Removing only the two position features is not enough (98% still novel; 0.14 at 10–14). Two kinds of features plausibly cause trouble: ones whose mapping depends on chain length (budget fraction, slack scaled by the total budget), and fixed-meaning ones that take values long chains never show in training (the gap scaled by a constant). The invariant encoder drops the first kind and caps the second; no control separates the two.
 2. **Every reward shows a "detect but don't repair" failure; one bit of missing state removes it.**
    - Late checkpoints that catch faults and then fail to fix them occur under outcome-only (15%), naive (29%) and monitorability-aware (21%) rewards. This is a learning failure rather than reward hacking: whenever the budget still allows the repair, repairing is worth more than any detection bonus.
@@ -130,6 +133,23 @@ Neither records whether a caught fault has been repaired. One follow-up adds tha
 ### A correction to the earlier version
 
 The [first version of this repository](https://github.com/raj200501/UltraRL/blob/81ec8cb/README.md) (a snapshot that also holds that version's working notes and internal mock reviews) concluded that monitorability-aware RL "remains brittle under longer held-out chains" (success 0.60 → 0.11). A controlled re-run reversed that: the failure came mostly from length-dependent observation features, compounded by under-training and last-checkpoint evaluation. The earlier pipeline also had a localization metric that gave credit for faults nobody checked; the never-check policy scored 0.07 on it. It also reused training seeds for one seed's evaluation episodes, which was harmless here because policies cannot tell episodes apart, but was still a protocol error. The paper's appendix "Changes from the Earlier Version" lists every change.
+
+## What this suggests, and what it does not
+
+When a model is trained to check and repair its own reasoning, an overseer needs to know whether the checking targets the right steps, whether caught errors get fixed, and whether this holds on longer problems than those seen in training. This testbed measures all three exactly. Spending a few exact checks where a cheap, noisy signal points is also the shape of auditing under a limited budget in AI control ([Greenblatt et al., 2024](https://arxiv.org/abs/2312.06942)), except that here faults are random rather than adversarial, and the agent checks its own steps.
+
+**Scope.** Small MLPs (5–8k parameters) trained by Double DQN on hand-made observations, not language models; at most one fault; exact, local checks; a given cue; no monitor and no adversary; held-out chains at most 2.3× longer than training ones. Both process rewards are computed from the hidden true values, so they act as an exact process reward model with no grader to fool. With one fault and only injective operations, a correct final answer also implies a correct trace, so the results on step rewards concern them only as a training signal: there are no right answers reached through wrong steps, the case behind a main argument for process supervision. The points below are hypotheses for language models, not results about them.
+
+- **Catching an error is not fixing it.** With the invariant observation, 15–29% of late checkpoints under each reward caught faults without repairing them, and paying for the catch did not prevent it (21% with the check payment, 15% without). It is a learning failure under partial observability, not reward hacking: telling the agent that a caught fault is still open (one bit), or showing it its last 3 actions, removed it under every reward, and paying at the repair step instead of at detection removed it under the one reward we tried. The likely route runs through Double DQN's bootstrapped values; learners trained on sampled returns, such as the critic-free RL used for some reasoning models, were not tested and might not fail this way. Evaluate self-verification by errors fixed, not errors flagged.
+- **A representation's failure can be blamed on the reward.** This project's first version did exactly that. Before concluding that a process reward does not generalize, measure how much held-out input is novel, and vary the representation with the reward fixed. "Learned to verify on training problems" and "verifies appropriately on longer problems" are separate claims.
+- **An accurate step reward may stabilise training without teaching where to check.** The step-correctness bonus made training more stable but never resolvably beat outcome-only at selected checkpoints; the terms that helped on long chains, the cue terms, encode the same knowledge as the cue-triggered heuristic.
+
+**Next experiments.**
+
+- Monte Carlo policy-gradient and recurrent learners: does detect-without-repair need bootstrapped values, and is the open fault learned from history?
+- Process rewards from an imperfect grader (missed faults, false alarms, or a verifier trained on rollouts): which grader errors does RL exploit, and does the exploitation show up on longer chains?
+- Faults placed where the learned policy is least likely to check: how exploitable is a learned allocation of checks?
+- The same chains as a text task with `VERIFY`/`REVISE` tool calls for a small language model, scored with the same exact metrics.
 
 ## Repository layout
 
