@@ -5,8 +5,8 @@ title: "Learning When to Verify Under a Budget: Process Rewards, Representations
 authors:
   - family-names: Kashikar
     given-names: Raj
-version: 1.0.0
-date-released: 2026-11-04
+version: 1.0.1
+date-released: 2026-11-11
 repository-code: "https://github.com/raj200501/UltraRL"
 license: MIT
 preferred-citation:
